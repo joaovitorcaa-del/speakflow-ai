@@ -5,6 +5,7 @@ import { ProgressRing } from "@/components/ProgressRing";
 import { WeeklyStatusCard } from "@/components/WeeklyStatusCard";
 import { FreeTalkCard } from "@/components/FreeTalkCard";
 import { MetricCard } from "@/components/MetricCard";
+import { VocabularyCard } from "@/components/VocabularyCard";
 import { useAuth } from "@/hooks/useAuth";
 import { useWeeklyStats } from "@/hooks/useWeeklyStats";
 import { 
@@ -211,6 +212,9 @@ export function HomeScreen({
             }
           />
         </div>
+
+        {/* Vocabulary Card */}
+        <VocabularyCard className="mt-4" />
 
         {/* Journey Button */}
         <button 
