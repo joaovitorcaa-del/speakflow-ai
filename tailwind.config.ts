@@ -55,6 +55,11 @@ export default {
           fire: "hsl(var(--streak-fire))",
           inactive: "hsl(var(--streak-inactive))",
         },
+        medal: {
+          gold: "hsl(var(--medal-gold))",
+          silver: "hsl(var(--medal-silver))",
+          bronze: "hsl(var(--medal-bronze))",
+        },
         sidebar: {
           DEFAULT: "hsl(var(--sidebar-background))",
           foreground: "hsl(var(--sidebar-foreground))",

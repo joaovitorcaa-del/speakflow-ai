@@ -2,12 +2,13 @@ import { useState, useEffect } from "react";
 import { Onboarding, OnboardingData } from "@/components/Onboarding";
 import { HomeScreen } from "@/components/HomeScreen";
 import { ChallengeFlow } from "@/components/ChallengeFlow";
+import { FreeTalkFlow } from "@/components/FreeTalkFlow";
 import { useAuth } from "@/hooks/useAuth";
 import { useProfile } from "@/hooks/useProfile";
 import { supabase } from "@/integrations/supabase/client";
 import { Loader2 } from "lucide-react";
 
-type AppView = "loading" | "onboarding" | "home" | "challenge";
+type AppView = "loading" | "onboarding" | "home" | "challenge" | "freetalk";
 
 const Index = () => {
   const { user } = useAuth();
@@ -71,6 +72,38 @@ const Index = () => {
     setView("challenge");
   };
 
+  const handleStartFreeTalk = () => {
+    setView("freetalk");
+  };
+
+  const handleFreeTalkComplete = async (minutesSpoken: number) => {
+    if (!user) return;
+
+    // Record speaking minutes from free talk
+    const today = new Date().toISOString().split('T')[0];
+    
+    // Get existing progress for today
+    const { data: existing } = await supabase
+      .from('daily_progress')
+      .select('speaking_minutes')
+      .eq('user_id', user.id)
+      .eq('date', today)
+      .single();
+
+    const currentMinutes = existing?.speaking_minutes || 0;
+
+    await supabase.from('daily_progress').upsert({
+      user_id: user.id,
+      date: today,
+      speaking_minutes: currentMinutes + minutesSpoken
+    }, {
+      onConflict: 'user_id,date'
+    });
+
+    await fetchWeekProgress();
+    setView("home");
+  };
+
   const handleChallengeComplete = async () => {
     if (!user) return;
 
@@ -119,6 +152,15 @@ const Index = () => {
     );
   }
 
+  if (view === "freetalk") {
+    return (
+      <FreeTalkFlow 
+        onBack={() => setView("home")}
+        onComplete={handleFreeTalkComplete}
+      />
+    );
+  }
+
   // Calculate weekly progress percentage
   const completedDays = weekProgress.filter(Boolean).length;
   const weeklyProgress = Math.round((completedDays / 7) * 100);
@@ -130,6 +172,7 @@ const Index = () => {
       weekProgress={weekProgress}
       weeklyProgress={weeklyProgress}
       onStartChallenge={handleStartChallenge}
+      onStartFreeTalk={handleStartFreeTalk}
     />
   );
 };
