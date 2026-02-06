@@ -127,31 +127,49 @@ export function FreeTalkFlow({ onBack, onComplete }: FreeTalkFlowProps) {
     onComplete(minutesSpoken);
   };
 
-  const addUserMessage = (content: string) => {
+  const addUserMessage = async (content: string) => {
     const newMessage: Message = {
       id: Date.now().toString(),
       role: "user",
       content
     };
     setMessages(prev => [...prev, newMessage]);
+    setIsLoading(true);
 
-    // Simulate AI response (in production, this would call an AI endpoint)
-    setTimeout(() => {
-      const responses = [
-        "That's really interesting! Tell me more about that.",
-        "I understand. How does that make you feel?",
-        "Great point! What do you think about...",
-        "That sounds challenging. How are you handling it?",
-        "Interesting perspective! Have you considered...",
-      ];
-      
+    try {
+      // Build conversation history for AI
+      const conversationHistory = messages.map(m => ({
+        role: m.role,
+        content: m.content
+      }));
+
+      const { data, error } = await supabase.functions.invoke('free-talk', {
+        body: { 
+          userMessage: content,
+          conversationHistory
+        }
+      });
+
+      if (error) throw error;
+
       const aiResponse: Message = {
         id: (Date.now() + 1).toString(),
         role: "assistant",
-        content: responses[Math.floor(Math.random() * responses.length)]
+        content: data.message || "That's interesting! Tell me more about that."
       };
       setMessages(prev => [...prev, aiResponse]);
-    }, 1500);
+    } catch (error) {
+      console.error("Error getting AI response:", error);
+      // Fallback response
+      const fallbackResponse: Message = {
+        id: (Date.now() + 1).toString(),
+        role: "assistant",
+        content: "That's really interesting! Can you tell me more about that?"
+      };
+      setMessages(prev => [...prev, fallbackResponse]);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (

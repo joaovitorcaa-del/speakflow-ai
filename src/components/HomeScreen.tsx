@@ -141,20 +141,12 @@ export function HomeScreen({
           />
         )}
 
-        {/* Free Talk Card */}
-        <FreeTalkCard 
-          remainingMinutes={10}
-          isPremium={false}
-          onStart={onStartFreeTalk}
-          className="mt-4"
-        />
-
-        {/* Quick Stats with Modals */}
+        {/* Quick Stats with Modals - Indicators at top */}
         <div className="grid grid-cols-2 gap-4 mt-4">
           <MetricCard
             icon={<Mic className="w-6 h-6 text-accent" />}
             value={stats ? `${stats.minutesSpoken}min` : "0min"}
-            label="Falando hoje"
+            label="Falado hoje"
             sublabel={stats && stats.minutesSpoken < 20 ? `Faltam ${20 - stats.minutesSpoken} min` : undefined}
             iconBgClass="bg-accent/10"
             modalTitle="Tempo de Fala"
@@ -180,7 +172,7 @@ export function HomeScreen({
           />
           <MetricCard
             icon={<TrendingUp className="w-6 h-6 text-streak-fire" />}
-            value="+32%"
+            value={stats ? `+${Math.round((stats.progressPercentage / 10))}%` : "+0%"}
             label="Fluência"
             sublabel="Últimas 3 semanas"
             iconBgClass="bg-streak-fire/10"
@@ -212,6 +204,14 @@ export function HomeScreen({
             }
           />
         </div>
+
+        {/* Free Talk Card - Action card */}
+        <FreeTalkCard 
+          remainingMinutes={10}
+          isPremium={false}
+          onStart={onStartFreeTalk}
+          className="mt-4"
+        />
 
         {/* Vocabulary Card */}
         <VocabularyCard className="mt-4" />
