@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { ProgressBar } from "@/components/ProgressBar";
@@ -29,6 +29,9 @@ export function ChallengeFlow({ onBack, onComplete }: ChallengeFlowProps) {
   const [isRecording, setIsRecording] = useState(false);
   const [shadowingIndex, setShadowingIndex] = useState(0);
   const [outputIndex, setOutputIndex] = useState(0);
+  const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
+
+  const inputAudioText = `I've been working at this company for about three years now. My main responsibilities include managing the marketing team and overseeing our digital campaigns. What I enjoy most is the creative problem-solving aspect of my job. Every day brings new challenges that keep me engaged and motivated.`;
 
   const shadowingSentences = [
     "I've been working at this company for about three years now.",
@@ -51,6 +54,67 @@ export function ChallengeFlow({ onBack, onComplete }: ChallengeFlowProps) {
       default: return 0;
     }
   };
+
+  const playInputAudio = () => {
+    if (isPlaying) {
+      window.speechSynthesis.cancel();
+      setIsPlaying(false);
+      return;
+    }
+
+    const utterance = new SpeechSynthesisUtterance(inputAudioText);
+    utterance.lang = 'en-US';
+    utterance.rate = 0.9;
+    utterance.pitch = 1;
+    
+    utterance.onend = () => {
+      setIsPlaying(false);
+    };
+    
+    utterance.onerror = () => {
+      setIsPlaying(false);
+    };
+
+    utteranceRef.current = utterance;
+    setIsPlaying(true);
+    window.speechSynthesis.speak(utterance);
+  };
+
+  const playShadowingSentence = () => {
+    if (isPlaying) {
+      window.speechSynthesis.cancel();
+      setIsPlaying(false);
+      return;
+    }
+
+    const utterance = new SpeechSynthesisUtterance(shadowingSentences[shadowingIndex]);
+    utterance.lang = 'en-US';
+    utterance.rate = 0.85;
+    utterance.pitch = 1;
+    
+    utterance.onend = () => {
+      setIsPlaying(false);
+    };
+    
+    utterance.onerror = () => {
+      setIsPlaying(false);
+    };
+
+    utteranceRef.current = utterance;
+    setIsPlaying(true);
+    window.speechSynthesis.speak(utterance);
+  };
+
+  useEffect(() => {
+    return () => {
+      window.speechSynthesis.cancel();
+    };
+  }, []);
+
+  useEffect(() => {
+    window.speechSynthesis.cancel();
+    setIsPlaying(false);
+  }, [step, shadowingIndex]);
 
   const handleNextStep = () => {
     if (step === "input") setStep("shadowing");
@@ -104,7 +168,7 @@ export function ChallengeFlow({ onBack, onComplete }: ChallengeFlowProps) {
                 <Button 
                   variant="hero" 
                   size="icon-lg"
-                  onClick={() => setIsPlaying(!isPlaying)}
+                  onClick={playInputAudio}
                 >
                   {isPlaying ? <Pause className="w-8 h-8" /> : <Play className="w-8 h-8" />}
                 </Button>
@@ -154,7 +218,7 @@ export function ChallengeFlow({ onBack, onComplete }: ChallengeFlowProps) {
               <Button 
                 variant="hero" 
                 size="icon-lg"
-                onClick={() => setIsPlaying(!isPlaying)}
+                onClick={playShadowingSentence}
               >
                 {isPlaying ? <Pause className="w-8 h-8" /> : <Volume2 className="w-8 h-8" />}
               </Button>
