@@ -3,12 +3,13 @@ import { Onboarding, OnboardingData } from "@/components/Onboarding";
 import { HomeScreen } from "@/components/HomeScreen";
 import { ChallengeFlow } from "@/components/ChallengeFlow";
 import { FreeTalkFlow } from "@/components/FreeTalkFlow";
+import { JourneyScreen } from "@/components/JourneyScreen";
 import { useAuth } from "@/hooks/useAuth";
 import { useProfile } from "@/hooks/useProfile";
 import { supabase } from "@/integrations/supabase/client";
 import { Loader2 } from "lucide-react";
 
-type AppView = "loading" | "onboarding" | "home" | "challenge" | "freetalk";
+type AppView = "loading" | "onboarding" | "home" | "challenge" | "freetalk" | "journey";
 
 const Index = () => {
   const { user } = useAuth();
@@ -161,9 +162,22 @@ const Index = () => {
     );
   }
 
+  if (view === "journey") {
+    return (
+      <JourneyScreen 
+        currentLevel={mapLevelToCategory(profile?.level)}
+        onBack={() => setView("home")}
+      />
+    );
+  }
+
   // Calculate weekly progress percentage
   const completedDays = weekProgress.filter(Boolean).length;
   const weeklyProgress = Math.round((completedDays / 7) * 100);
+
+  const handleOpenJourney = () => {
+    setView("journey");
+  };
 
   return (
     <HomeScreen
@@ -173,8 +187,23 @@ const Index = () => {
       weeklyProgress={weeklyProgress}
       onStartChallenge={handleStartChallenge}
       onStartFreeTalk={handleStartFreeTalk}
+      onOpenJourney={handleOpenJourney}
     />
   );
 };
+
+// Map database level to fluency category
+function mapLevelToCategory(level: string | null | undefined): string {
+  switch (level) {
+    case 'beginner':
+      return 'starter';
+    case 'intermediate':
+      return 'confident';
+    case 'advanced':
+      return 'clear';
+    default:
+      return 'starter';
+  }
+}
 
 export default Index;

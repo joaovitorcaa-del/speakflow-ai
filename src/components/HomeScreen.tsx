@@ -17,7 +17,8 @@ import {
   Trophy,
   LogOut,
   TrendingUp,
-  Target
+  Target,
+  Map
 } from "lucide-react";
 
 interface HomeScreenProps {
@@ -27,6 +28,7 @@ interface HomeScreenProps {
   weeklyProgress: number;
   onStartChallenge: () => void;
   onStartFreeTalk: () => void;
+  onOpenJourney: () => void;
 }
 
 export function HomeScreen({ 
@@ -35,7 +37,8 @@ export function HomeScreen({
   weekProgress,
   weeklyProgress,
   onStartChallenge,
-  onStartFreeTalk
+  onStartFreeTalk,
+  onOpenJourney
 }: HomeScreenProps) {
   const { signOut } = useAuth();
   const { stats } = useWeeklyStats();
@@ -208,6 +211,23 @@ export function HomeScreen({
             }
           />
         </div>
+
+        {/* Journey Button */}
+        <button 
+          onClick={onOpenJourney}
+          className="w-full mt-4 p-4 rounded-2xl border border-border bg-card hover:bg-muted/50 transition-all flex items-center justify-between group"
+        >
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
+              <Map className="w-5 h-5 text-primary" />
+            </div>
+            <div className="text-left">
+              <p className="font-semibold text-foreground">Sua Jornada</p>
+              <p className="text-xs text-muted-foreground">Veja seu progresso de fluência</p>
+            </div>
+          </div>
+          <ChevronRight className="w-5 h-5 text-muted-foreground group-hover:text-foreground transition-colors" />
+        </button>
       </div>
     </div>
   );
