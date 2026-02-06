@@ -1,1 +1,4 @@
 project_id = "ouitaohvqmfmvymagaql"
+
+[functions.assess-level]
+verify_jwt = false

@@ -1,9 +1,9 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { MessageCircle, Mic, ArrowRight, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { AssessmentFlow } from "./AssessmentFlow";
 
 interface OnboardingProps {
   onComplete: (data: OnboardingData) => void;
@@ -24,6 +24,7 @@ const goals = [
 export function Onboarding({ onComplete }: OnboardingProps) {
   const [step, setStep] = useState(0);
   const [selectedGoal, setSelectedGoal] = useState<string | null>(null);
+  const [showAssessment, setShowAssessment] = useState(false);
 
   const handleNext = () => {
     if (step === 0) {
@@ -34,12 +35,30 @@ export function Onboarding({ onComplete }: OnboardingProps) {
   };
 
   const handleStartAssessment = () => {
-    // For MVP, skip actual assessment and set intermediate level
+    setShowAssessment(true);
+  };
+
+  const handleAssessmentComplete = (level: string) => {
     onComplete({
       goal: selectedGoal || "conversation",
-      level: "intermediate",
+      level,
     });
   };
+
+  const handleAssessmentBack = () => {
+    setShowAssessment(false);
+  };
+
+  // Show interactive assessment
+  if (showAssessment && selectedGoal) {
+    return (
+      <AssessmentFlow
+        goal={selectedGoal}
+        onComplete={handleAssessmentComplete}
+        onBack={handleAssessmentBack}
+      />
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
