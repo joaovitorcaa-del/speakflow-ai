@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { MessageCircle, Mic, ArrowRight, Sparkles } from "lucide-react";
@@ -33,9 +34,10 @@ export function Onboarding({ onComplete }: OnboardingProps) {
   };
 
   const handleStartAssessment = () => {
+    // For MVP, skip actual assessment and set intermediate level
     onComplete({
       goal: selectedGoal || "conversation",
-      level: "intermediate", // Would come from AI assessment
+      level: "intermediate",
     });
   };
 
@@ -169,7 +171,7 @@ export function Onboarding({ onComplete }: OnboardingProps) {
               onClick={handleStartAssessment}
             >
               <Mic className="w-5 h-5" />
-              Começar gravação
+              Começar jornada
             </Button>
           )}
         </div>
