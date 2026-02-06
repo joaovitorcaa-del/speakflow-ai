@@ -75,8 +75,8 @@ const fluencyLevels: FluencyLevel[] = [
   },
   {
     id: "fluent",
-    name: "Fluent & Flexible",
-    description: "Você domina a comunicação em inglês",
+    name: "Advanced Fluency",
+    description: "Você domina a comunicação em inglês com confiança",
     requirements: [
       "Nota de fluência ≥ 90 por 4 semanas",
       "Consistência de 85%+",
@@ -241,9 +241,12 @@ export function JourneyScreen({ currentLevel, onBack }: JourneyScreenProps) {
         </div>
         
         {/* Motivation footer */}
-        <div className="mt-8 text-center">
+        <div className="mt-8 text-center space-y-2">
           <p className="text-sm text-muted-foreground">
             Continue praticando para desbloquear novos níveis! 🚀
+          </p>
+          <p className="text-xs text-muted-foreground/70 italic max-w-xs mx-auto">
+            Fluência não é um ponto final. É algo que se mantém.
           </p>
         </div>
       </div>
