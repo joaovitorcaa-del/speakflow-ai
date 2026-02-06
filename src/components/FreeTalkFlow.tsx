@@ -2,14 +2,15 @@ import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { WaveformVisualizer } from "@/components/WaveformVisualizer";
+import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
 import {
   ArrowLeft,
   Mic,
   Square,
-  Send,
   Volume2,
   Loader2,
-  Pause
+  Pause,
+  Send
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
@@ -23,7 +24,6 @@ interface Message {
   id: string;
   role: "user" | "assistant";
   content: string;
-  audioUrl?: string;
 }
 
 const conversationStarters = [
@@ -34,14 +34,47 @@ const conversationStarters = [
 
 export function FreeTalkFlow({ onBack, onComplete }: FreeTalkFlowProps) {
   const [messages, setMessages] = useState<Message[]>([]);
-  const [isRecording, setIsRecording] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
   const [playingId, setPlayingId] = useState<string | null>(null);
   const [elapsedTime, setElapsedTime] = useState(0);
+  const [currentTranscript, setCurrentTranscript] = useState("");
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const startTimeRef = useRef<number>(Date.now());
+  const messagesEndRef = useRef<HTMLDivElement | null>(null);
+
+  const { 
+    transcript, 
+    isListening, 
+    isSupported, 
+    startListening, 
+    stopListening,
+    resetTranscript 
+  } = useSpeechRecognition({
+    language: 'en-US',
+    continuous: true,
+    onResult: (finalTranscript) => {
+      if (finalTranscript.trim()) {
+        addUserMessage(finalTranscript.trim());
+        resetTranscript();
+        setCurrentTranscript("");
+      }
+    },
+    onError: (error) => {
+      console.error("Speech recognition error:", error);
+    }
+  });
+
+  // Update current transcript in real-time
+  useEffect(() => {
+    setCurrentTranscript(transcript);
+  }, [transcript]);
+
+  // Auto-scroll to bottom when new messages arrive
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
 
   // Initialize with a greeting
   useEffect(() => {
@@ -125,6 +158,25 @@ export function FreeTalkFlow({ onBack, onComplete }: FreeTalkFlowProps) {
   const handleFinish = () => {
     const minutesSpoken = Math.ceil(elapsedTime / 60);
     onComplete(minutesSpoken);
+  };
+
+  const handleRecordToggle = () => {
+    if (isListening) {
+      stopListening();
+    } else {
+      resetTranscript();
+      setCurrentTranscript("");
+      startListening();
+    }
+  };
+
+  const handleSendTranscript = () => {
+    if (currentTranscript.trim()) {
+      stopListening();
+      addUserMessage(currentTranscript.trim());
+      resetTranscript();
+      setCurrentTranscript("");
+    }
   };
 
   const addUserMessage = async (content: string) => {
@@ -227,39 +279,71 @@ export function FreeTalkFlow({ onBack, onComplete }: FreeTalkFlowProps) {
             </Card>
           </div>
         ))}
+        
+        {/* Show current transcript while speaking */}
+        {currentTranscript && (
+          <div className="flex justify-end gap-2">
+            <Card variant="default" padding="sm" className="max-w-[80%] bg-muted border-dashed">
+              <p className="text-sm text-muted-foreground italic">{currentTranscript}...</p>
+            </Card>
+          </div>
+        )}
+        
+        {/* Loading indicator */}
+        {isLoading && (
+          <div className="flex justify-start">
+            <Card variant="default" padding="sm">
+              <Loader2 className="w-4 h-4 animate-spin" />
+            </Card>
+          </div>
+        )}
+        
+        <div ref={messagesEndRef} />
       </div>
 
       {/* Recording Area */}
       <div className="border-t bg-card p-4">
+        {!isSupported && (
+          <p className="text-xs text-destructive text-center mb-2">
+            Seu navegador não suporta reconhecimento de voz. Tente no Chrome.
+          </p>
+        )}
+        
         <div className="mb-4">
-          <WaveformVisualizer isActive={isRecording} />
+          <WaveformVisualizer isActive={isListening} />
         </div>
         
-        <div className="flex justify-center gap-4">
+        <div className="flex justify-center gap-4 items-center">
           <Button
-            variant={isRecording ? "record" : "hero"}
+            variant={isListening ? "record" : "hero"}
             size="icon-lg"
             className="w-16 h-16 rounded-full"
-            onClick={() => {
-              if (isRecording) {
-                setIsRecording(false);
-                // Simulate transcription
-                addUserMessage("This is a simulated user response for the demo.");
-              } else {
-                setIsRecording(true);
-              }
-            }}
+            onClick={handleRecordToggle}
+            disabled={!isSupported}
           >
-            {isRecording ? (
+            {isListening ? (
               <Square className="w-7 h-7" />
             ) : (
               <Mic className="w-7 h-7" />
             )}
           </Button>
+          
+          {currentTranscript && (
+            <Button
+              variant="hero"
+              size="icon-lg"
+              className="w-14 h-14 rounded-full"
+              onClick={handleSendTranscript}
+            >
+              <Send className="w-6 h-6" />
+            </Button>
+          )}
         </div>
         
         <p className="text-xs text-muted-foreground text-center mt-3">
-          {isRecording ? "Gravando... toque para enviar" : "Toque para falar"}
+          {isListening 
+            ? "Ouvindo... toque para parar ou enviar" 
+            : "Toque para falar"}
         </p>
       </div>
     </div>
