@@ -4,6 +4,7 @@ import { Card } from "@/components/ui/card";
 import { MessageCircle, Mic, ArrowRight, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { AssessmentFlow } from "./AssessmentFlow";
+import { AppPreviewCarousel } from "./AppPreviewCarousel";
 
 interface OnboardingProps {
   onComplete: (data: OnboardingData) => void;
@@ -22,7 +23,7 @@ const goals = [
 ];
 
 export function Onboarding({ onComplete }: OnboardingProps) {
-  const [step, setStep] = useState(0);
+  const [step, setStep] = useState(-1); // Start at -1 for app preview
   const [selectedGoal, setSelectedGoal] = useState<string | null>(null);
   const [showAssessment, setShowAssessment] = useState(false);
 
@@ -48,6 +49,13 @@ export function Onboarding({ onComplete }: OnboardingProps) {
   const handleAssessmentBack = () => {
     setShowAssessment(false);
   };
+
+  // Show app preview carousel first
+  if (step === -1) {
+    return (
+      <AppPreviewCarousel onComplete={() => setStep(0)} />
+    );
+  }
 
   // Show interactive assessment
   if (showAssessment && selectedGoal) {
