@@ -35,17 +35,35 @@ export function ChallengeFlow({ onBack, onComplete }: ChallengeFlowProps) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const audioCache = useRef<Map<string, string>>(new Map());
 
-  const inputAudioText = `I've been working at this company for about three years now. My main responsibilities include managing the marketing team and overseeing our digital campaigns. What I enjoy most is the creative problem-solving aspect of my job. Every day brings new challenges that keep me engaged and motivated.`;
+  // Extended input content (~5 minutes of listening)
+  const inputAudioText = `I've been working at this company for about three years now. My main responsibilities include managing the marketing team and overseeing our digital campaigns. 
+  
+  What I enjoy most is the creative problem-solving aspect of my job. Every day brings new challenges that keep me engaged and motivated. For example, last week we had to completely redesign our social media strategy because our target audience shifted.
+  
+  The most challenging part is probably balancing multiple projects at once. I usually have three or four campaigns running simultaneously, each with different deadlines and requirements. But I've learned to prioritize effectively and communicate clearly with my team.
+  
+  One thing that really helps is having weekly check-ins with everyone. We discuss what's working, what isn't, and how we can improve. This collaborative approach has made our team much more efficient over time.`;
 
+  // Extended shadowing sentences (~8 minutes of practice)
   const shadowingSentences = [
     "I've been working at this company for about three years now.",
     "My main responsibilities include managing the marketing team.",
     "What I enjoy most is the creative problem-solving aspect.",
+    "Every day brings new challenges that keep me engaged.",
+    "Last week we had to completely redesign our strategy.",
+    "The most challenging part is balancing multiple projects.",
+    "I usually have three or four campaigns running simultaneously.",
+    "I've learned to prioritize effectively and communicate clearly.",
+    "We discuss what's working and how we can improve.",
+    "This collaborative approach has made us more efficient."
   ];
 
+  // Extended output questions (~7 minutes of speaking)
   const outputQuestions = [
-    "Tell me about your current job or studies. What do you do?",
-    "What's the most interesting project you've worked on recently?",
+    "Tell me about your current job or studies. What do you do on a typical day?",
+    "What's the most interesting project you've worked on recently? Describe it in detail.",
+    "What challenges do you face in your work or studies? How do you handle them?",
+    "How do you stay motivated when things get difficult? Give me an example."
   ];
 
   const getProgress = () => {

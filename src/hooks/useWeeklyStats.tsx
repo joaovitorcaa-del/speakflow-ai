@@ -55,10 +55,28 @@ export function useWeeklyStats() {
     if (!user) return;
 
     setLoading(true);
+    
+    // Use local timezone for accurate date calculation
     const today = new Date();
     const currentWeekStart = getStartOfWeek(today);
+    currentWeekStart.setHours(0, 0, 0, 0);
+    
     const lastWeekStart = new Date(currentWeekStart);
     lastWeekStart.setDate(lastWeekStart.getDate() - 7);
+    
+    // Format dates as YYYY-MM-DD in local timezone
+    const formatLocalDate = (date: Date) => {
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const day = String(date.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    };
+    
+    const currentWeekStartStr = formatLocalDate(currentWeekStart);
+    const currentWeekEnd = new Date(currentWeekStart);
+    currentWeekEnd.setDate(currentWeekEnd.getDate() + 7);
+    const currentWeekEndStr = formatLocalDate(currentWeekEnd);
+    const lastWeekStartStr = formatLocalDate(lastWeekStart);
 
     try {
       // Fetch current week's progress
@@ -66,16 +84,16 @@ export function useWeeklyStats() {
         .from('daily_progress')
         .select('speaking_minutes, challenge_completed, date')
         .eq('user_id', user.id)
-        .gte('date', currentWeekStart.toISOString().split('T')[0])
-        .lt('date', new Date(currentWeekStart.getTime() + 7 * 86400000).toISOString().split('T')[0]);
+        .gte('date', currentWeekStartStr)
+        .lt('date', currentWeekEndStr);
 
       // Fetch last week's progress
       const { data: lastWeekData } = await supabase
         .from('daily_progress')
         .select('speaking_minutes, challenge_completed')
         .eq('user_id', user.id)
-        .gte('date', lastWeekStart.toISOString().split('T')[0])
-        .lt('date', currentWeekStart.toISOString().split('T')[0]);
+        .gte('date', lastWeekStartStr)
+        .lt('date', currentWeekStartStr);
 
       // Calculate current week stats
       const currentMinutes = currentWeekData?.reduce((sum, d) => sum + (d.speaking_minutes || 0), 0) || 0;

@@ -37,21 +37,42 @@ const Index = () => {
   const fetchWeekProgress = async () => {
     if (!user) return;
 
+    // Use local timezone for accurate day calculation
     const today = new Date();
+    const currentDayOfWeek = today.getDay(); // 0 = Sunday, 6 = Saturday
+    
+    // Calculate start of week (Sunday) in local time
     const startOfWeek = new Date(today);
-    startOfWeek.setDate(today.getDate() - today.getDay());
+    startOfWeek.setDate(today.getDate() - currentDayOfWeek);
+    startOfWeek.setHours(0, 0, 0, 0);
+    
+    // Format dates as YYYY-MM-DD in local timezone
+    const formatLocalDate = (date: Date) => {
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const day = String(date.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    };
+    
+    const startDateStr = formatLocalDate(startOfWeek);
+    const endOfWeek = new Date(startOfWeek);
+    endOfWeek.setDate(endOfWeek.getDate() + 7);
+    const endDateStr = formatLocalDate(endOfWeek);
     
     const { data } = await supabase
       .from('daily_progress')
       .select('date, challenge_completed')
       .eq('user_id', user.id)
-      .gte('date', startOfWeek.toISOString().split('T')[0])
+      .gte('date', startDateStr)
+      .lt('date', endDateStr)
       .order('date', { ascending: true });
 
     if (data) {
       const progress = [false, false, false, false, false, false, false];
       data.forEach(day => {
-        const dayDate = new Date(day.date);
+        // Parse date string directly without timezone conversion
+        const [year, month, dayNum] = day.date.split('-').map(Number);
+        const dayDate = new Date(year, month - 1, dayNum);
         const dayIndex = dayDate.getDay();
         if (day.challenge_completed) {
           progress[dayIndex] = true;
