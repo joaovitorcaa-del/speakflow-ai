@@ -12,9 +12,11 @@ import {
   Square,
   Check,
   ChevronRight,
-  Volume2
+  Volume2,
+  Loader2
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { supabase } from "@/integrations/supabase/client";
 
 type ChallengeStep = "input" | "shadowing" | "output" | "feedback" | "complete";
 
@@ -26,10 +28,12 @@ interface ChallengeFlowProps {
 export function ChallengeFlow({ onBack, onComplete }: ChallengeFlowProps) {
   const [step, setStep] = useState<ChallengeStep>("input");
   const [isPlaying, setIsPlaying] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [shadowingIndex, setShadowingIndex] = useState(0);
   const [outputIndex, setOutputIndex] = useState(0);
-  const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const audioCache = useRef<Map<string, string>>(new Map());
 
   const inputAudioText = `I've been working at this company for about three years now. My main responsibilities include managing the marketing team and overseeing our digital campaigns. What I enjoy most is the creative problem-solving aspect of my job. Every day brings new challenges that keep me engaged and motivated.`;
 
@@ -55,65 +59,120 @@ export function ChallengeFlow({ onBack, onComplete }: ChallengeFlowProps) {
     }
   };
 
-  const playInputAudio = () => {
-    if (isPlaying) {
-      window.speechSynthesis.cancel();
-      setIsPlaying(false);
+  const playWithElevenLabs = async (text: string) => {
+    // Check cache first
+    const cachedUrl = audioCache.current.get(text);
+    if (cachedUrl) {
+      playAudioUrl(cachedUrl);
       return;
     }
 
-    const utterance = new SpeechSynthesisUtterance(inputAudioText);
-    utterance.lang = 'en-US';
-    utterance.rate = 0.9;
-    utterance.pitch = 1;
+    setIsLoading(true);
+    try {
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/elevenlabs-tts`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+            Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+          },
+          body: JSON.stringify({ 
+            text,
+            voiceId: "EXAVITQu4vr4xnSDxMaL" // Sarah - natural female voice
+          }),
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error(`TTS request failed: ${response.status}`);
+      }
+
+      const audioBlob = await response.blob();
+      const audioUrl = URL.createObjectURL(audioBlob);
+      
+      // Cache the audio URL
+      audioCache.current.set(text, audioUrl);
+      
+      playAudioUrl(audioUrl);
+    } catch (error) {
+      console.error("Error generating speech:", error);
+      setIsLoading(false);
+      setIsPlaying(false);
+    }
+  };
+
+  const playAudioUrl = (url: string) => {
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current = null;
+    }
+
+    const audio = new Audio(url);
+    audioRef.current = audio;
     
-    utterance.onend = () => {
+    audio.onloadeddata = () => {
+      setIsLoading(false);
+    };
+    
+    audio.onplay = () => {
+      setIsPlaying(true);
+    };
+    
+    audio.onended = () => {
       setIsPlaying(false);
     };
     
-    utterance.onerror = () => {
+    audio.onerror = () => {
+      console.error("Error playing audio");
       setIsPlaying(false);
+      setIsLoading(false);
     };
 
-    utteranceRef.current = utterance;
     setIsPlaying(true);
-    window.speechSynthesis.speak(utterance);
+    audio.play().catch(err => {
+      console.error("Playback error:", err);
+      setIsPlaying(false);
+      setIsLoading(false);
+    });
+  };
+
+  const stopAudio = () => {
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.currentTime = 0;
+    }
+    setIsPlaying(false);
+    setIsLoading(false);
+  };
+
+  const playInputAudio = () => {
+    if (isPlaying) {
+      stopAudio();
+      return;
+    }
+    playWithElevenLabs(inputAudioText);
   };
 
   const playShadowingSentence = () => {
     if (isPlaying) {
-      window.speechSynthesis.cancel();
-      setIsPlaying(false);
+      stopAudio();
       return;
     }
-
-    const utterance = new SpeechSynthesisUtterance(shadowingSentences[shadowingIndex]);
-    utterance.lang = 'en-US';
-    utterance.rate = 0.85;
-    utterance.pitch = 1;
-    
-    utterance.onend = () => {
-      setIsPlaying(false);
-    };
-    
-    utterance.onerror = () => {
-      setIsPlaying(false);
-    };
-
-    utteranceRef.current = utterance;
-    setIsPlaying(true);
-    window.speechSynthesis.speak(utterance);
+    playWithElevenLabs(shadowingSentences[shadowingIndex]);
   };
 
   useEffect(() => {
     return () => {
-      window.speechSynthesis.cancel();
+      stopAudio();
+      // Clean up cached audio URLs
+      audioCache.current.forEach(url => URL.revokeObjectURL(url));
     };
   }, []);
 
   useEffect(() => {
-    window.speechSynthesis.cancel();
-    setIsPlaying(false);
+    stopAudio();
   }, [step, shadowingIndex]);
 
   const handleNextStep = () => {
@@ -169,8 +228,15 @@ export function ChallengeFlow({ onBack, onComplete }: ChallengeFlowProps) {
                   variant="hero" 
                   size="icon-lg"
                   onClick={playInputAudio}
+                  disabled={isLoading}
                 >
-                  {isPlaying ? <Pause className="w-8 h-8" /> : <Play className="w-8 h-8" />}
+                  {isLoading ? (
+                    <Loader2 className="w-8 h-8 animate-spin" />
+                  ) : isPlaying ? (
+                    <Pause className="w-8 h-8" />
+                  ) : (
+                    <Play className="w-8 h-8" />
+                  )}
                 </Button>
               </div>
             </Card>
@@ -219,8 +285,15 @@ export function ChallengeFlow({ onBack, onComplete }: ChallengeFlowProps) {
                 variant="hero" 
                 size="icon-lg"
                 onClick={playShadowingSentence}
+                disabled={isLoading}
               >
-                {isPlaying ? <Pause className="w-8 h-8" /> : <Volume2 className="w-8 h-8" />}
+                {isLoading ? (
+                  <Loader2 className="w-8 h-8 animate-spin" />
+                ) : isPlaying ? (
+                  <Pause className="w-8 h-8" />
+                ) : (
+                  <Volume2 className="w-8 h-8" />
+                )}
               </Button>
             </div>
 
