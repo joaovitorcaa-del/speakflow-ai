@@ -175,6 +175,48 @@ export type Database = {
         }
         Relationships: []
       }
+      vocabulary_words: {
+        Row: {
+          context_theme: string | null
+          created_at: string
+          example_phrase: string
+          explanation: string
+          id: string
+          is_confident: boolean
+          learned_at: string | null
+          pronunciation_url: string | null
+          updated_at: string
+          user_id: string
+          word: string
+        }
+        Insert: {
+          context_theme?: string | null
+          created_at?: string
+          example_phrase: string
+          explanation: string
+          id?: string
+          is_confident?: boolean
+          learned_at?: string | null
+          pronunciation_url?: string | null
+          updated_at?: string
+          user_id: string
+          word: string
+        }
+        Update: {
+          context_theme?: string | null
+          created_at?: string
+          example_phrase?: string
+          explanation?: string
+          id?: string
+          is_confident?: boolean
+          learned_at?: string | null
+          pronunciation_url?: string | null
+          updated_at?: string
+          user_id?: string
+          word?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
