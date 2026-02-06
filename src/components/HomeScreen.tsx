@@ -2,6 +2,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardTitle, CardDescription } from "@/components/ui/card";
 import { StreakDisplay } from "@/components/StreakDisplay";
 import { ProgressRing } from "@/components/ProgressRing";
+import { useAuth } from "@/hooks/useAuth";
 import { 
   Play, 
   Clock, 
@@ -9,9 +10,9 @@ import {
   Mic, 
   Brain,
   ChevronRight,
-  Trophy
+  Trophy,
+  LogOut
 } from "lucide-react";
-
 interface HomeScreenProps {
   userName: string;
   currentStreak: number;
@@ -27,6 +28,7 @@ export function HomeScreen({
   weeklyProgress,
   onStartChallenge 
 }: HomeScreenProps) {
+  const { signOut } = useAuth();
   const todayChallenge = {
     title: "Descrevendo seu trabalho",
     duration: "20 min",
@@ -46,9 +48,19 @@ export function HomeScreen({
             <p className="text-secondary-foreground/70 text-sm">Bom dia,</p>
             <h1 className="text-2xl font-bold">{userName} 👋</h1>
           </div>
-          <ProgressRing progress={weeklyProgress} size={56} strokeWidth={5}>
-            <span className="text-xs font-bold">{weeklyProgress}%</span>
-          </ProgressRing>
+          <div className="flex items-center gap-3">
+            <ProgressRing progress={weeklyProgress} size={56} strokeWidth={5}>
+              <span className="text-xs font-bold">{weeklyProgress}%</span>
+            </ProgressRing>
+            <Button 
+              variant="ghost" 
+              size="icon-sm" 
+              onClick={signOut}
+              className="text-secondary-foreground/70 hover:text-secondary-foreground hover:bg-secondary-foreground/10"
+            >
+              <LogOut className="w-5 h-5" />
+            </Button>
+          </div>
         </div>
         
         <StreakDisplay 

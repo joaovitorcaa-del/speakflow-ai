@@ -14,13 +14,173 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      audio_recordings: {
+        Row: {
+          challenge_completion_id: string | null
+          created_at: string
+          duration_seconds: number
+          id: string
+          recording_type: string
+          storage_path: string
+          user_id: string
+        }
+        Insert: {
+          challenge_completion_id?: string | null
+          created_at?: string
+          duration_seconds?: number
+          id?: string
+          recording_type: string
+          storage_path: string
+          user_id: string
+        }
+        Update: {
+          challenge_completion_id?: string | null
+          created_at?: string
+          duration_seconds?: number
+          id?: string
+          recording_type?: string
+          storage_path?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "audio_recordings_challenge_completion_id_fkey"
+            columns: ["challenge_completion_id"]
+            isOneToOne: false
+            referencedRelation: "challenge_completions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      challenge_completions: {
+        Row: {
+          challenge_topic: string
+          challenge_type: string
+          clarity_score: number | null
+          completed_at: string
+          feedback_text: string | null
+          fluency_score: number | null
+          id: string
+          pronunciation_score: number | null
+          speaking_duration_seconds: number
+          user_id: string
+        }
+        Insert: {
+          challenge_topic: string
+          challenge_type: string
+          clarity_score?: number | null
+          completed_at?: string
+          feedback_text?: string | null
+          fluency_score?: number | null
+          id?: string
+          pronunciation_score?: number | null
+          speaking_duration_seconds?: number
+          user_id: string
+        }
+        Update: {
+          challenge_topic?: string
+          challenge_type?: string
+          clarity_score?: number | null
+          completed_at?: string
+          feedback_text?: string | null
+          fluency_score?: number | null
+          id?: string
+          pronunciation_score?: number | null
+          speaking_duration_seconds?: number
+          user_id?: string
+        }
+        Relationships: []
+      }
+      daily_progress: {
+        Row: {
+          challenge_completed: boolean
+          clarity_score: number | null
+          created_at: string
+          date: string
+          fluency_score: number | null
+          id: string
+          pronunciation_score: number | null
+          speaking_minutes: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          challenge_completed?: boolean
+          clarity_score?: number | null
+          created_at?: string
+          date?: string
+          fluency_score?: number | null
+          id?: string
+          pronunciation_score?: number | null
+          speaking_minutes?: number
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          challenge_completed?: boolean
+          clarity_score?: number | null
+          created_at?: string
+          date?: string
+          fluency_score?: number | null
+          id?: string
+          pronunciation_score?: number | null
+          speaking_minutes?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      profiles: {
+        Row: {
+          avatar_url: string | null
+          created_at: string
+          current_streak: number
+          display_name: string | null
+          goal: string | null
+          id: string
+          level: string | null
+          longest_streak: number
+          total_challenges_completed: number
+          total_speaking_minutes: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          avatar_url?: string | null
+          created_at?: string
+          current_streak?: number
+          display_name?: string | null
+          goal?: string | null
+          id?: string
+          level?: string | null
+          longest_streak?: number
+          total_challenges_completed?: number
+          total_speaking_minutes?: number
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          avatar_url?: string | null
+          created_at?: string
+          current_streak?: number
+          display_name?: string | null
+          goal?: string | null
+          id?: string
+          level?: string | null
+          longest_streak?: number
+          total_challenges_completed?: number
+          total_speaking_minutes?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      update_user_streak: { Args: { p_user_id: string }; Returns: undefined }
     }
     Enums: {
       [_ in never]: never
