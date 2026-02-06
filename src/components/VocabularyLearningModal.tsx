@@ -49,18 +49,38 @@ export function VocabularyLearningModal({
 
     setIsPlayingAudio(true);
     try {
-      const { data, error } = await supabase.functions.invoke("elevenlabs-tts", {
-        body: { text: currentWord.word, voice: "onyx" },
-      });
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/elevenlabs-tts`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+            Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+          },
+          body: JSON.stringify({ 
+            text: currentWord.word, 
+            voiceId: "EXAVITQu4vr4xnSDxMaL" // Sarah voice
+          }),
+        }
+      );
 
-      if (error) throw error;
+      if (!response.ok) throw new Error("TTS failed");
 
-      if (data?.audioContent) {
-        const audio = new Audio(`data:audio/mpeg;base64,${data.audioContent}`);
-        audio.onended = () => setIsPlayingAudio(false);
-        audio.onerror = () => setIsPlayingAudio(false);
-        await audio.play();
-      }
+      const audioBlob = await response.blob();
+      const audioUrl = URL.createObjectURL(audioBlob);
+      const audio = new Audio(audioUrl);
+      
+      audio.onended = () => {
+        setIsPlayingAudio(false);
+        URL.revokeObjectURL(audioUrl);
+      };
+      audio.onerror = () => {
+        setIsPlayingAudio(false);
+        URL.revokeObjectURL(audioUrl);
+      };
+
+      await audio.play();
     } catch (error) {
       console.error("Error playing pronunciation:", error);
       toast.error("Erro ao reproduzir pronúncia");
