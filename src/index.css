@@ -52,10 +52,10 @@
     --radius: 1rem;
     
     /* Custom Tokens */
-    --gradient-primary: linear-gradient(135deg, hsl(16, 90%, 60%), hsl(30, 100%, 65%));
-    --gradient-success: linear-gradient(135deg, hsl(160, 60%, 45%), hsl(170, 70%, 50%));
-    --gradient-progress: linear-gradient(90deg, hsl(16, 90%, 60%), hsl(30, 100%, 65%));
-    --gradient-card: linear-gradient(180deg, hsl(0, 0%, 100%), hsl(40, 30%, 98%));
+    --gradient-primary: linear-gradient(135deg, hsl(16, 90%, 58%), hsl(16, 90%, 62%));
+    --gradient-success: linear-gradient(135deg, hsl(160, 60%, 45%), hsl(160, 60%, 48%));
+    --gradient-progress: linear-gradient(90deg, hsl(16, 90%, 58%), hsl(16, 90%, 60%));
+    --gradient-card: linear-gradient(180deg, hsl(0, 0%, 100%), hsl(40, 30%, 99%));
     
     --shadow-soft: 0 4px 20px -4px hsl(220 30% 15% / 0.08);
     --shadow-card: 0 8px 32px -8px hsl(220 30% 15% / 0.12);
