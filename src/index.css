@@ -79,6 +79,11 @@
     /* Streak colors */
     --streak-fire: 25 95% 53%;
     --streak-inactive: 40 20% 85%;
+    
+    /* Medal colors */
+    --medal-gold: 45 95% 55%;
+    --medal-silver: 220 10% 70%;
+    --medal-bronze: 25 60% 50%;
   }
 
   .dark {
