@@ -16,7 +16,7 @@ const buttonVariants = cva(
         ghost: "hover:bg-muted text-muted-foreground hover:text-foreground",
         link: "text-primary underline-offset-4 hover:underline",
         // Custom variants for SpeakDaily
-        hero: "bg-gradient-to-r from-primary to-primary-glow text-primary-foreground shadow-glow hover:shadow-xl hover:scale-[1.02] active:scale-[0.98] font-bold",
+        hero: "bg-primary text-primary-foreground shadow-glow hover:shadow-xl hover:scale-[1.02] hover:bg-primary/95 active:scale-[0.98] font-bold",
         success: "bg-accent text-accent-foreground hover:bg-accent/90 active:scale-[0.98] shadow-soft",
         record: "bg-destructive text-destructive-foreground hover:bg-destructive/90 active:scale-[0.98] shadow-lg animate-pulse-glow",
         soft: "bg-primary/10 text-primary hover:bg-primary/20 active:scale-[0.98]",

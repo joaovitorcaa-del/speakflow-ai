@@ -11,7 +11,7 @@ const cardVariants = cva(
         elevated: "shadow-card hover:shadow-xl",
         interactive: "shadow-soft hover:shadow-card hover:scale-[1.01] cursor-pointer",
         gradient: "bg-gradient-to-br from-card to-muted border-0 shadow-card",
-        primary: "bg-gradient-to-br from-primary to-primary-glow text-primary-foreground border-0 shadow-glow",
+        primary: "bg-primary text-primary-foreground border-0 shadow-glow",
         success: "bg-gradient-to-br from-accent to-accent/80 text-accent-foreground border-0 shadow-card",
         outline: "bg-transparent border-2 border-dashed border-muted-foreground/20",
       },
