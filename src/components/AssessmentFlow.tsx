@@ -132,43 +132,54 @@ export function AssessmentFlow({ goal, onComplete, onBack }: AssessmentFlowProps
     }
   }, []);
 
+  const accumulatedTranscriptRef = useRef("");
+  const isRecordingRef = useRef(false);
+
   // Initialize speech recognition
   useEffect(() => {
     if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
       const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
       const recognition = new SpeechRecognition();
-      recognition.continuous = true;
+      // On iOS, continuous mode can cause issues - use single utterance mode
+      recognition.continuous = false;
       recognition.interimResults = true;
       recognition.lang = 'en-US';
       
       recognition.onresult = (event) => {
-        let finalTranscript = '';
-        let interimTranscript = '';
+        let currentTranscript = '';
         
-        for (let i = event.resultIndex; i < event.results.length; i++) {
-          const transcript = event.results[i][0].transcript;
-          if (event.results[i].isFinal) {
-            finalTranscript += transcript + ' ';
-          } else {
-            interimTranscript += transcript;
-          }
+        for (let i = 0; i < event.results.length; i++) {
+          currentTranscript += event.results[i][0].transcript;
         }
         
-        setTranscript(prev => prev + finalTranscript);
+        // Store accumulated transcript
+        const fullTranscript = accumulatedTranscriptRef.current + currentTranscript;
+        setTranscript(fullTranscript);
+        
+        // If this result is final, add to accumulated
+        if (event.results[event.results.length - 1]?.isFinal) {
+          accumulatedTranscriptRef.current = fullTranscript + ' ';
+        }
       };
       
       recognition.onerror = (event: Event & { error?: string }) => {
         console.error('Speech recognition error:', event.error);
-        setIsRecording(false);
+        // Don't stop on 'no-speech' error, just log it
+        if (event.error !== 'no-speech' && event.error !== 'aborted') {
+          setIsRecording(false);
+          isRecordingRef.current = false;
+        }
       };
       
       recognition.onend = () => {
-        if (isRecording) {
-          // Restart if still recording
+        // Only restart if still supposed to be recording
+        if (isRecordingRef.current) {
           try {
             recognition.start();
           } catch (e) {
             console.error('Error restarting recognition:', e);
+            setIsRecording(false);
+            isRecordingRef.current = false;
           }
         }
       };
@@ -183,13 +194,17 @@ export function AssessmentFlow({ goal, onComplete, onBack }: AssessmentFlowProps
 
     return () => {
       if (recognitionRef.current) {
-        recognitionRef.current.stop();
+        try {
+          recognitionRef.current.stop();
+        } catch (e) {
+          // Ignore
+        }
       }
       if ('speechSynthesis' in window) {
         window.speechSynthesis.cancel();
       }
     };
-  }, [isRecording]);
+  }, []);
 
   // Start the assessment
   const startAssessment = async () => {
@@ -222,42 +237,51 @@ export function AssessmentFlow({ goal, onComplete, onBack }: AssessmentFlowProps
     }
   };
 
-  // Toggle recording
-  const toggleRecording = () => {
-    if (isRecording) {
-      // Stop recording
-      if (recognitionRef.current) {
-        recognitionRef.current.stop();
-      }
-      setIsRecording(false);
-    } else {
-      // Start recording
+  // Start recording
+  const startRecording = () => {
+    if (recognitionRef.current && !isRecording) {
+      accumulatedTranscriptRef.current = "";
       setTranscript("");
-      if (recognitionRef.current) {
-        try {
-          recognitionRef.current.start();
-          setIsRecording(true);
-        } catch (e) {
-          console.error('Error starting recognition:', e);
-        }
+      isRecordingRef.current = true;
+      try {
+        recognitionRef.current.start();
+        setIsRecording(true);
+      } catch (e) {
+        console.error('Error starting recognition:', e);
+        isRecordingRef.current = false;
       }
     }
   };
 
-  // Send response
-  const sendResponse = async () => {
-    if (!transcript.trim()) return;
-    
-    // Stop any recording
-    if (isRecording) {
-      if (recognitionRef.current) {
+  // Stop recording and auto-send
+  const stopRecordingAndSend = async () => {
+    if (recognitionRef.current && isRecording) {
+      isRecordingRef.current = false;
+      try {
         recognitionRef.current.stop();
+      } catch (e) {
+        console.error('Error stopping recognition:', e);
       }
       setIsRecording(false);
+      
+      // Get final transcript and send immediately
+      const finalText = (accumulatedTranscriptRef.current + transcript).trim() || transcript.trim();
+      if (finalText) {
+        // Small delay to ensure transcript is updated
+        setTimeout(() => {
+          sendResponseWithText(finalText);
+        }, 100);
+      }
     }
+  };
+
+  // Send response with specific text
+  const sendResponseWithText = async (textToSend: string) => {
+    if (!textToSend.trim()) return;
     
-    const userMessage = transcript.trim();
+    const userMessage = textToSend.trim();
     setTranscript("");
+    accumulatedTranscriptRef.current = "";
     setMessages(prev => [...prev, { role: "user", content: userMessage }]);
     setIsLoading(true);
     
@@ -432,16 +456,19 @@ export function AssessmentFlow({ goal, onComplete, onBack }: AssessmentFlowProps
         {/* Recording controls */}
         <div className="mt-auto space-y-4">
           {isLoading ? (
-            <div className="flex justify-center py-8">
-              <Loader2 className="w-12 h-12 animate-spin text-primary" />
+            <div className="flex flex-col items-center justify-center py-8">
+              <Loader2 className="w-12 h-12 animate-spin text-primary mb-3" />
+              <p className="text-sm text-muted-foreground">Processando...</p>
             </div>
           ) : (
             <>
               <div className="flex justify-center">
                 <button
-                  onClick={toggleRecording}
+                  onClick={isRecording ? stopRecordingAndSend : startRecording}
+                  disabled={isSpeaking}
                   className={cn(
                     "w-20 h-20 rounded-full flex items-center justify-center transition-all duration-300",
+                    isSpeaking && "opacity-50 cursor-not-allowed",
                     isRecording
                       ? "bg-destructive text-destructive-foreground animate-pulse shadow-lg scale-110"
                       : "bg-gradient-to-br from-primary to-primary-glow text-primary-foreground shadow-glow hover:scale-105"
@@ -456,20 +483,12 @@ export function AssessmentFlow({ goal, onComplete, onBack }: AssessmentFlowProps
               </div>
               
               <p className="text-center text-sm text-muted-foreground">
-                {isRecording ? "Toque para parar" : "Toque para falar"}
+                {isSpeaking 
+                  ? "Ouça o Alex..." 
+                  : isRecording 
+                    ? "Toque para parar e enviar" 
+                    : "Toque para falar"}
               </p>
-              
-              {transcript && !isRecording && (
-                <Button
-                  variant="hero"
-                  size="xl"
-                  className="w-full"
-                  onClick={sendResponse}
-                >
-                  Enviar resposta
-                  <ArrowRight className="w-5 h-5" />
-                </Button>
-              )}
             </>
           )}
         </div>
