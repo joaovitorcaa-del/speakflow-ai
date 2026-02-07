@@ -8,6 +8,8 @@ import { MetricCard } from "@/components/MetricCard";
 import { VocabularyCard } from "@/components/VocabularyCard";
 import { useAuth } from "@/hooks/useAuth";
 import { useWeeklyStats } from "@/hooks/useWeeklyStats";
+import { useOfflineCache } from "@/hooks/useOfflineCache";
+import { useEffect } from "react";
 import { 
   Play, 
   Clock, 
@@ -19,8 +21,11 @@ import {
   LogOut,
   TrendingUp,
   Target,
-  Map
+  Map,
+  WifiOff,
+  Download
 } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 
 interface HomeScreenProps {
   userName: string;
@@ -43,6 +48,16 @@ export function HomeScreen({
 }: HomeScreenProps) {
   const { signOut } = useAuth();
   const { stats } = useWeeklyStats();
+  const { isOnline, syncAndCache } = useOfflineCache();
+  const navigate = useNavigate();
+  
+  // Sync data when online
+  useEffect(() => {
+    if (isOnline) {
+      syncAndCache();
+    }
+  }, [isOnline, syncAndCache]);
+
   const todayChallenge = {
     title: "Descrevendo seu trabalho",
     duration: "20 min",
@@ -55,6 +70,14 @@ export function HomeScreen({
 
   return (
     <div className="min-h-screen bg-background pb-8">
+      {/* Offline Banner */}
+      {!isOnline && (
+        <div className="bg-muted border-b border-border px-4 py-2 flex items-center justify-center gap-2 text-sm text-muted-foreground">
+          <WifiOff className="w-4 h-4" />
+          <span>Modo offline — dados podem estar desatualizados</span>
+        </div>
+      )}
+
       {/* Header */}
       <div className="bg-gradient-to-br from-secondary to-secondary/90 text-secondary-foreground px-6 pt-12 pb-8 rounded-b-3xl">
         <div className="flex items-center justify-between mb-6">
@@ -63,6 +86,13 @@ export function HomeScreen({
             <h1 className="text-2xl font-bold">{userName} 👋</h1>
           </div>
           <div className="flex items-center gap-3">
+            <button
+              onClick={() => navigate('/install')}
+              className="p-2 rounded-full bg-secondary-foreground/10 hover:bg-secondary-foreground/20 transition-colors"
+              title="Instalar app"
+            >
+              <Download className="w-5 h-5 text-secondary-foreground/70" />
+            </button>
             <ProgressRing progress={weeklyProgress} size={56} strokeWidth={5}>
               <span className="text-xs font-bold">{weeklyProgress}%</span>
             </ProgressRing>
