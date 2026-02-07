@@ -10,7 +10,9 @@ import {
   Volume2,
   Loader2,
   Pause,
-  Send
+  Send,
+  AlertCircle,
+  CheckCircle2
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
@@ -24,6 +26,10 @@ interface Message {
   id: string;
   role: "user" | "assistant";
   content: string;
+  feedback?: {
+    positiveNote?: string;
+    tip?: string;
+  };
 }
 
 const conversationStarters = [
@@ -38,7 +44,7 @@ export function FreeTalkFlow({ onBack, onComplete }: FreeTalkFlowProps) {
   const [isPlaying, setIsPlaying] = useState(false);
   const [playingId, setPlayingId] = useState<string | null>(null);
   const [elapsedTime, setElapsedTime] = useState(0);
-  const [currentTranscript, setCurrentTranscript] = useState("");
+  const [micStatus, setMicStatus] = useState<'idle' | 'listening' | 'processing' | 'error'>('idle');
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const startTimeRef = useRef<number>(Date.now());
@@ -50,31 +56,25 @@ export function FreeTalkFlow({ onBack, onComplete }: FreeTalkFlowProps) {
     isSupported, 
     startListening, 
     stopListening,
-    resetTranscript 
+    resetTranscript,
+    permissionStatus,
+    error: speechError
   } = useSpeechRecognition({
     language: 'en-US',
     continuous: true,
-    onResult: (finalTranscript) => {
-      if (finalTranscript.trim()) {
-        addUserMessage(finalTranscript.trim());
-        resetTranscript();
-        setCurrentTranscript("");
-      }
+    onPartialResult: (partial) => {
+      // Real-time transcript update handled by state
     },
     onError: (error) => {
       console.error("Speech recognition error:", error);
+      setMicStatus('error');
     }
   });
-
-  // Update current transcript in real-time
-  useEffect(() => {
-    setCurrentTranscript(transcript);
-  }, [transcript]);
 
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+  }, [messages, transcript]);
 
   // Initialize with a greeting
   useEffect(() => {
@@ -160,22 +160,34 @@ export function FreeTalkFlow({ onBack, onComplete }: FreeTalkFlowProps) {
     onComplete(minutesSpoken);
   };
 
-  const handleRecordToggle = () => {
+  const handleRecordToggle = async () => {
     if (isListening) {
-      stopListening();
-    } else {
+      // Stop and send
+      const finalText = stopListening();
+      if (finalText.trim()) {
+        setMicStatus('processing');
+        await addUserMessage(finalText.trim());
+        setMicStatus('idle');
+      }
       resetTranscript();
-      setCurrentTranscript("");
-      startListening();
+    } else {
+      // Start listening
+      setMicStatus('listening');
+      const started = await startListening();
+      if (!started) {
+        setMicStatus('error');
+      }
     }
   };
 
-  const handleSendTranscript = () => {
-    if (currentTranscript.trim()) {
-      stopListening();
-      addUserMessage(currentTranscript.trim());
+  const handleSendTranscript = async () => {
+    if (transcript.trim()) {
+      const finalText = stopListening();
+      const textToSend = finalText || transcript.trim();
       resetTranscript();
-      setCurrentTranscript("");
+      setMicStatus('processing');
+      await addUserMessage(textToSend);
+      setMicStatus('idle');
     }
   };
 
@@ -224,6 +236,30 @@ export function FreeTalkFlow({ onBack, onComplete }: FreeTalkFlowProps) {
     }
   };
 
+  const getMicStatusText = () => {
+    if (speechError || micStatus === 'error') {
+      return permissionStatus === 'denied' 
+        ? "Permissão de microfone negada" 
+        : "Erro no microfone — tente novamente";
+    }
+    if (micStatus === 'processing') return "Processando...";
+    if (isListening) return "Ouvindo... toque para enviar";
+    return "Toque para falar";
+  };
+
+  const getMicStatusIcon = () => {
+    if (speechError || micStatus === 'error') {
+      return <AlertCircle className="w-4 h-4 text-destructive" />;
+    }
+    if (micStatus === 'processing') {
+      return <Loader2 className="w-4 h-4 animate-spin text-primary" />;
+    }
+    if (isListening) {
+      return <CheckCircle2 className="w-4 h-4 text-accent" />;
+    }
+    return null;
+  };
+
   return (
     <div className="min-h-screen bg-background flex flex-col">
       {/* Header */}
@@ -242,6 +278,13 @@ export function FreeTalkFlow({ onBack, onComplete }: FreeTalkFlowProps) {
 
       {/* Messages */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
+        {/* AI Analysis Notice */}
+        <div className="flex justify-center">
+          <span className="text-xs text-muted-foreground bg-muted px-3 py-1 rounded-full">
+            Cada resposta é analisada individualmente pela IA
+          </span>
+        </div>
+
         {messages.map((message) => (
           <div
             key={message.id}
@@ -281,10 +324,14 @@ export function FreeTalkFlow({ onBack, onComplete }: FreeTalkFlowProps) {
         ))}
         
         {/* Show current transcript while speaking */}
-        {currentTranscript && (
+        {transcript && (
           <div className="flex justify-end gap-2">
-            <Card variant="default" padding="sm" className="max-w-[80%] bg-muted border-dashed">
-              <p className="text-sm text-muted-foreground italic">{currentTranscript}...</p>
+            <Card variant="default" padding="sm" className="max-w-[80%] bg-muted border-dashed border-primary/30">
+              <div className="flex items-center gap-2 mb-1">
+                <div className="w-2 h-2 rounded-full bg-accent animate-pulse" />
+                <span className="text-xs text-muted-foreground">Ouvindo...</span>
+              </div>
+              <p className="text-sm text-foreground">{transcript}</p>
             </Card>
           </div>
         )}
@@ -293,7 +340,10 @@ export function FreeTalkFlow({ onBack, onComplete }: FreeTalkFlowProps) {
         {isLoading && (
           <div className="flex justify-start">
             <Card variant="default" padding="sm">
-              <Loader2 className="w-4 h-4 animate-spin" />
+              <div className="flex items-center gap-2">
+                <Loader2 className="w-4 h-4 animate-spin" />
+                <span className="text-sm text-muted-foreground">Alex está digitando...</span>
+              </div>
             </Card>
           </div>
         )}
@@ -304,13 +354,27 @@ export function FreeTalkFlow({ onBack, onComplete }: FreeTalkFlowProps) {
       {/* Recording Area */}
       <div className="border-t bg-card p-4">
         {!isSupported && (
-          <p className="text-xs text-destructive text-center mb-2">
-            Seu navegador não suporta reconhecimento de voz. Tente no Chrome.
-          </p>
+          <div className="flex items-center justify-center gap-2 text-destructive mb-3 p-2 bg-destructive/10 rounded-lg">
+            <AlertCircle className="w-4 h-4" />
+            <p className="text-xs">
+              Seu navegador não suporta reconhecimento de voz. Tente no Chrome ou Safari.
+            </p>
+          </div>
         )}
         
         <div className="mb-4">
           <WaveformVisualizer isActive={isListening} />
+        </div>
+        
+        {/* Mic Status */}
+        <div className="flex items-center justify-center gap-2 mb-3">
+          {getMicStatusIcon()}
+          <span className={cn(
+            "text-xs",
+            (speechError || micStatus === 'error') ? "text-destructive" : "text-muted-foreground"
+          )}>
+            {getMicStatusText()}
+          </span>
         </div>
         
         <div className="flex justify-center gap-4 items-center">
@@ -319,16 +383,18 @@ export function FreeTalkFlow({ onBack, onComplete }: FreeTalkFlowProps) {
             size="icon-lg"
             className="w-16 h-16 rounded-full"
             onClick={handleRecordToggle}
-            disabled={!isSupported}
+            disabled={!isSupported || micStatus === 'processing'}
           >
-            {isListening ? (
+            {micStatus === 'processing' ? (
+              <Loader2 className="w-7 h-7 animate-spin" />
+            ) : isListening ? (
               <Square className="w-7 h-7" />
             ) : (
               <Mic className="w-7 h-7" />
             )}
           </Button>
           
-          {currentTranscript && (
+          {transcript && (
             <Button
               variant="hero"
               size="icon-lg"
@@ -339,12 +405,6 @@ export function FreeTalkFlow({ onBack, onComplete }: FreeTalkFlowProps) {
             </Button>
           )}
         </div>
-        
-        <p className="text-xs text-muted-foreground text-center mt-3">
-          {isListening 
-            ? "Ouvindo... toque para parar ou enviar" 
-            : "Toque para falar"}
-        </p>
       </div>
     </div>
   );
