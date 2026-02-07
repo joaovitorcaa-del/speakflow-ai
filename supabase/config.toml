@@ -11,3 +11,9 @@ verify_jwt = false
 
 [functions.free-talk]
 verify_jwt = false
+
+[functions.evaluate-speech]
+verify_jwt = false
+
+[functions.shadowing-feedback]
+verify_jwt = false
