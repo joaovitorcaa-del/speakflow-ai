@@ -12,7 +12,8 @@ import {
   Pause,
   Send,
   AlertCircle,
-  CheckCircle2
+  CheckCircle2,
+  RotateCcw
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
@@ -121,6 +122,21 @@ export function FreeTalkFlow({ onBack, onComplete }: FreeTalkFlowProps) {
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const handleRetry = async () => {
+    // Find index of last user message
+    const lastUserIdx = messages.map(m => m.role).lastIndexOf("user");
+    if (lastUserIdx === -1) return;
+
+    // Remove last user message and any AI reply after it
+    setMessages(prev => prev.slice(0, lastUserIdx));
+
+    // Auto-start mic
+    recordingStartRef.current = Date.now();
+    setMicStatus('listening');
+    const started = await startListening();
+    if (!started) setMicStatus('error');
   };
 
   const handleFinish = () => {
@@ -270,49 +286,64 @@ export function FreeTalkFlow({ onBack, onComplete }: FreeTalkFlowProps) {
           </span>
         </div>
 
-        {messages.map((message) => (
-          <div
-            key={message.id}
-            className={cn(
-              "flex gap-2",
-              message.role === "user" ? "justify-end" : "justify-start"
-            )}
-          >
-            <Card
-              variant={message.role === "user" ? "primary" : "default"}
-              padding="sm"
+        {messages.map((message) => {
+          const lastUserMessageId = [...messages].reverse().find(m => m.role === "user")?.id;
+          const isLastUserMsg = message.role === "user" && message.id === lastUserMessageId;
+
+          return (
+            <div
+              key={message.id}
               className={cn(
-                "max-w-[80%]",
-                message.role === "user" && "bg-primary text-primary-foreground"
+                "flex gap-2",
+                message.role === "user" ? "justify-end" : "justify-start"
               )}
             >
-              <p className="text-sm">{message.content}</p>
-              {message.role === "user" && message.sent && (
-                <div className="flex items-center gap-1 mt-1 justify-end">
-                  <CheckCircle2 className="w-3 h-3 opacity-70" />
-                  <span className="text-[10px] opacity-70">Enviado</span>
-                </div>
-              )}
-              {message.role === "assistant" && (
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
-                  className="mt-2 h-7 w-7"
-                  onClick={() => playAudio(message.content, message.id)}
-                  disabled={isLoading}
-                >
-                  {isLoading && playingId === message.id ? (
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                  ) : isPlaying && playingId === message.id ? (
-                    <Pause className="w-4 h-4" />
-                  ) : (
-                    <Volume2 className="w-4 h-4" />
-                  )}
-                </Button>
-              )}
-            </Card>
-          </div>
-        ))}
+              <Card
+                variant={message.role === "user" ? "primary" : "default"}
+                padding="sm"
+                className={cn(
+                  "max-w-[80%]",
+                  message.role === "user" && "bg-primary text-primary-foreground"
+                )}
+              >
+                <p className="text-sm">{message.content}</p>
+                {message.role === "user" && message.sent && (
+                  <div className="flex items-center gap-1 mt-1 justify-end">
+                    <CheckCircle2 className="w-3 h-3 opacity-70" />
+                    <span className="text-[10px] opacity-70">Enviado</span>
+                    {isLastUserMsg && !isListening && !isLoading && (
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        className="h-5 w-5 ml-1 opacity-70 hover:opacity-100 text-primary-foreground hover:bg-primary-foreground/20"
+                        onClick={handleRetry}
+                      >
+                        <RotateCcw className="w-3 h-3" />
+                      </Button>
+                    )}
+                  </div>
+                )}
+                {message.role === "assistant" && (
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    className="mt-2 h-7 w-7"
+                    onClick={() => playAudio(message.content, message.id)}
+                    disabled={isLoading}
+                  >
+                    {isLoading && playingId === message.id ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : isPlaying && playingId === message.id ? (
+                      <Pause className="w-4 h-4" />
+                    ) : (
+                      <Volume2 className="w-4 h-4" />
+                    )}
+                  </Button>
+                )}
+              </Card>
+            </div>
+          );
+        })}
         
         {/* Current transcript */}
         {transcript && (
