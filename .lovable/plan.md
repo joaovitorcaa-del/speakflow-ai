@@ -1,40 +1,36 @@
 
 
-# Fix: 3 Problemas do Onboarding
+# Correção: App travado após exclusão de dados do perfil
 
-## Problemas Identificados
+## Problema
+O perfil foi deletado da tabela `profiles`, mas o usuário continua autenticado. O código em `Index.tsx` fica preso na tela de loading porque nunca trata o caso em que `profile` e null e `profileLoading` e false.
 
-### 1. Onboarding reinicia apos feedback da IA (BUG CRITICO)
-**Causa raiz**: Em `Index.tsx` linha 32, a condição para considerar o onboarding completo é:
-```
-if (profile.goal && profile.level !== 'beginner')
-```
-Se a IA avalia o usuario como `beginner`, a condição falha e o app volta ao onboarding em loop infinito. Qualquer nivel "beginner" causa esse problema.
+## Solucao imediata
+Recriar o registro de perfil na tabela `profiles` para o usuario `00aa4136-9e33-4e48-97a4-5477ac9f4378` (John), **sem** goal e level definidos, para que o onboarding seja exibido normalmente.
 
-**Correção**: Mudar a lógica para verificar apenas se `goal` e `level` estão definidos (não nulos), independente do valor do nível.
-
-### 2. Tempo de processamento longo
-**Causa raiz**: Cada interação faz uma chamada ao Gemini via edge function (2-5s) + chamada ao ElevenLabs TTS (2-3s), somando 4-8s por turno. Na avaliação final (3a pergunta), o processamento é ainda mais lento pois o modelo precisa gerar JSON estruturado.
-
-**Correção**:
-- Adicionar feedback visual progressivo durante o processamento ("Analisando sua resposta...", "Gerando feedback...")
-- Na fase de avaliação, mostrar animação de progresso com etapas visuais ao invés de apenas um spinner genérico
-- Pular o TTS na última mensagem do Alex (que é a avaliação), já que o resultado é exibido como texto na tela de resultado
-
-### 3. Ultima fala do Alex não carregou
-**Causa raiz**: Quando `isComplete` é `true` na resposta da 3a pergunta (linha 305-312), o fluxo pula direto para a fase "evaluating" sem falar nenhuma mensagem. Não há mensagem final do Alex antes do resultado.
-
-**Correção**: Antes de ir para a fase de resultado, falar uma mensagem de transição curta como "Great conversation! Let me analyze your English level..." usando TTS, e só depois mostrar o resultado.
-
----
-
-## Detalhes Técnicos
+## Correcao no codigo
 
 ### Arquivo: `src/pages/Index.tsx`
-- Linha 32: Trocar `profile.level !== 'beginner'` por `profile.level !== null` (ou simplesmente `profile.level`)
+Adicionar tratamento para o caso em que o usuario esta autenticado mas nao tem perfil. No `useEffect`, quando `profileLoading` e `false` e `profile` e `null`, o app deve:
+1. Tentar criar um novo perfil automaticamente (usando `user.id` e `user.user_metadata.display_name`)
+2. Se falhar, redirecionar para onboarding com uma mensagem de erro
 
-### Arquivo: `src/components/AssessmentFlow.tsx`
-- Linhas 305-312: Ao receber `isComplete`, primeiro falar uma mensagem de transição via TTS, depois ir para fase "evaluating"
-- Linhas 458-461: Melhorar o indicador de loading com mensagens contextuais baseadas no estado atual
-- Linhas 500-509: Adicionar etapas visuais animadas na tela "Analisando" (ex: checkmarks aparecendo: "Fluência analisada", "Vocabulário avaliado", etc.)
+### Arquivo: `src/hooks/useProfile.tsx`
+Adicionar uma funcao `createProfile` que insere um novo registro na tabela profiles quando nenhum e encontrado. Isso garante resiliencia caso o trigger de criacao automatica falhe ou dados sejam deletados.
+
+## Detalhes tecnicos
+
+```text
+useEffect (Index.tsx):
+  profileLoading = false
+  profile = null
+  user exists?
+    -> Sim: chamar createProfile()
+    -> Nao: redirecionar para /auth
+```
+
+### Mudancas:
+1. **INSERT** na tabela `profiles`: user_id, display_name (sem goal/level para acionar onboarding)
+2. **useProfile.tsx**: adicionar `createProfile()` que faz upsert com `onConflict: 'user_id'`
+3. **Index.tsx**: no useEffect, quando `!profile && !profileLoading && user`, chamar createProfile e depois refetch
 
