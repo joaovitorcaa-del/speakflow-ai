@@ -66,7 +66,9 @@ const levelColors: Record<string, string> = {
 };
 
 export function AssessmentFlow({ goal, onComplete, onBack }: AssessmentFlowProps) {
-  const [phase, setPhase] = useState<"intro" | "conversation" | "evaluating" | "result">("intro");
+  const [phase, setPhase] = useState<"intro" | "conversation" | "transition" | "evaluating" | "result">("intro");
+  const [loadingStep, setLoadingStep] = useState(0);
+  const [evaluatingSteps, setEvaluatingSteps] = useState<boolean[]>([false, false, false, false]);
   const [messages, setMessages] = useState<Message[]>([]);
   const [currentAiMessage, setCurrentAiMessage] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -303,14 +305,58 @@ export function AssessmentFlow({ goal, onComplete, onBack }: AssessmentFlowProps
       if (error) throw error;
       
       if (data.isComplete && data.evaluation) {
-        // Evaluation complete
+        // Save evaluation for later
+        setEvaluation(data.evaluation);
+        
+        // Play transition message before showing results
+        setPhase("transition");
+        try {
+          const transitionText = "Great conversation! Let me analyze your English level...";
+          setCurrentAiMessage(transitionText);
+          
+          const response = await fetch(
+            `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/elevenlabs-tts`,
+            {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+                Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+              },
+              body: JSON.stringify({ 
+                text: transitionText, 
+                voiceId: "JBFqnCBsd6RMkjVDRZzb"
+              }),
+            }
+          );
+          
+          if (response.ok) {
+            const audioBlob = await response.blob();
+            const audioUrl = URL.createObjectURL(audioBlob);
+            const audio = new Audio(audioUrl);
+            
+            await new Promise<void>((resolve) => {
+              audio.onended = () => { URL.revokeObjectURL(audioUrl); resolve(); };
+              audio.onerror = () => { URL.revokeObjectURL(audioUrl); resolve(); };
+              audio.play().catch(() => resolve());
+            });
+          }
+        } catch (e) {
+          console.error("Transition TTS error:", e);
+        }
+        
+        // Now show evaluating animation
         setPhase("evaluating");
         
-        // Short delay for effect
-        setTimeout(() => {
-          setEvaluation(data.evaluation);
-          setPhase("result");
-        }, 2000);
+        // Animate steps sequentially
+        const stepLabels = [0, 1, 2, 3];
+        for (const i of stepLabels) {
+          await new Promise(r => setTimeout(r, 600));
+          setEvaluatingSteps(prev => { const next = [...prev]; next[i] = true; return next; });
+        }
+        
+        await new Promise(r => setTimeout(r, 500));
+        setPhase("result");
       } else {
         // Continue conversation
         setCurrentAiMessage(data.message);
@@ -458,7 +504,9 @@ export function AssessmentFlow({ goal, onComplete, onBack }: AssessmentFlowProps
           {isLoading ? (
             <div className="flex flex-col items-center justify-center py-8">
               <Loader2 className="w-12 h-12 animate-spin text-primary mb-3" />
-              <p className="text-sm text-muted-foreground">Processando...</p>
+              <p className="text-sm text-muted-foreground animate-pulse">
+                {questionNumber >= 3 ? "Analisando sua resposta..." : "Gerando próxima pergunta..."}
+              </p>
             </div>
           ) : (
             <>
@@ -497,14 +545,46 @@ export function AssessmentFlow({ goal, onComplete, onBack }: AssessmentFlowProps
   }
 
   // Evaluating screen
-  if (phase === "evaluating") {
+  // Transition screen (Alex speaking before evaluation)
+  if (phase === "transition") {
     return (
       <div className="min-h-screen bg-background flex flex-col items-center justify-center px-6 py-8">
         <div className="w-24 h-24 rounded-full bg-gradient-to-br from-primary to-primary-glow flex items-center justify-center mb-8 animate-pulse shadow-glow">
-          <Sparkles className="w-12 h-12 text-primary-foreground" />
+          <Volume2 className="w-12 h-12 text-primary-foreground" />
         </div>
-        <h2 className="text-2xl font-bold mb-4 animate-fade-in-up">Analisando...</h2>
-        <p className="text-muted-foreground animate-fade-in-up">Nossa IA está avaliando sua conversa</p>
+        <h2 className="text-2xl font-bold mb-4 animate-fade-in-up">Alex está falando...</h2>
+        <p className="text-muted-foreground animate-fade-in-up text-center max-w-sm">{currentAiMessage}</p>
+      </div>
+    );
+  }
+
+  if (phase === "evaluating") {
+    const evalStepLabels = ["Fluência analisada", "Vocabulário avaliado", "Pronúncia verificada", "Nível definido"];
+    return (
+      <div className="min-h-screen bg-background flex flex-col items-center justify-center px-6 py-8">
+        <div className="w-24 h-24 rounded-full bg-gradient-to-br from-primary to-primary-glow flex items-center justify-center mb-8 shadow-glow">
+          <Sparkles className="w-12 h-12 text-primary-foreground animate-spin" style={{ animationDuration: '3s' }} />
+        </div>
+        <h2 className="text-2xl font-bold mb-6 animate-fade-in-up">Analisando sua conversa</h2>
+        <div className="space-y-3 w-full max-w-xs">
+          {evalStepLabels.map((label, i) => (
+            <div key={i} className={cn(
+              "flex items-center gap-3 p-3 rounded-xl transition-all duration-500",
+              evaluatingSteps[i] ? "bg-primary/10" : "bg-muted/30"
+            )}>
+              <div className={cn(
+                "w-6 h-6 rounded-full flex items-center justify-center transition-all duration-500 text-xs font-bold",
+                evaluatingSteps[i] ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"
+              )}>
+                {evaluatingSteps[i] ? "✓" : (i + 1)}
+              </div>
+              <span className={cn(
+                "text-sm transition-colors duration-500",
+                evaluatingSteps[i] ? "text-foreground font-medium" : "text-muted-foreground"
+              )}>{label}</span>
+            </div>
+          ))}
+        </div>
       </div>
     );
   }

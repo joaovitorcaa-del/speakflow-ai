@@ -25,7 +25,7 @@ const Index = () => {
 
     if (profile) {
       // Check if user has completed onboarding (has goal set)
-      if (profile.goal && profile.level !== 'beginner') {
+      if (profile.goal && profile.level) {
         setView("home");
         fetchWeekProgress();
       } else {
