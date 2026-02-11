@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from './useAuth';
 
@@ -21,6 +21,7 @@ export function useProfile() {
   const { user } = useAuth();
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
+  const isInitialFetch = useRef(true);
 
   useEffect(() => {
     if (!user) {
@@ -35,7 +36,9 @@ export function useProfile() {
   const fetchProfile = async () => {
     if (!user) return;
     
-    setLoading(true);
+    if (isInitialFetch.current) {
+      setLoading(true);
+    }
     const { data, error } = await supabase
       .from('profiles')
       .select('*')
@@ -48,6 +51,7 @@ export function useProfile() {
       setProfile(data);
     }
     setLoading(false);
+    isInitialFetch.current = false;
   };
 
   const createProfile = async (displayName?: string) => {

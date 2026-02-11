@@ -24,8 +24,7 @@ const Index = () => {
   const [resumeSession, setResumeSession] = useState<any>(null);
 
   useEffect(() => {
-    if (profileLoading) {
-      setView("loading");
+    if (profileLoading && view === "loading") {
       return;
     }
 
