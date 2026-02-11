@@ -366,14 +366,15 @@ export function ChallengeFlow({ onBack, onComplete, isFixation = false, resumeSe
 
   const handleRecordToggle = async () => {
     if (isRecording || isListening) {
-      const finalText = stopListening();
+      const finalText = await stopListening();
       setIsRecording(false);
       
       const duration = (Date.now() - recordingStartRef.current) / 1000;
       setSpeakingDuration(prev => prev + duration);
 
-      if (finalText.trim()) {
-        setAllTranscriptions(prev => [...prev, finalText.trim()]);
+      const text = finalText.trim() || transcript.trim();
+      if (text) {
+        setAllTranscriptions(prev => [...prev, text]);
         setAudioConfirmed(true);
         
         if (step === "shadowing") {
@@ -382,7 +383,7 @@ export function ChallengeFlow({ onBack, onComplete, isFixation = false, resumeSe
             newShadowing[shadowingIndex] = true;
             return { ...prev, shadowingRecorded: newShadowing };
           });
-          getShadowingFeedback(finalText.trim(), shadowingSentences[shadowingIndex]);
+          getShadowingFeedback(text, shadowingSentences[shadowingIndex]);
         }
 
         if (step === "output") {
@@ -391,10 +392,9 @@ export function ChallengeFlow({ onBack, onComplete, isFixation = false, resumeSe
             newOutput[outputIndex] = true;
             return { ...prev, outputRecorded: newOutput };
           });
-          getOutputFeedback(finalText.trim(), questions[outputIndex]);
+          getOutputFeedback(text, questions[outputIndex]);
         }
       } else {
-        // Even if empty, treat accumulated text as valid
         setAudioConfirmed(true);
       }
       resetTranscript();

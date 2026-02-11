@@ -130,13 +130,14 @@ export function FreeTalkFlow({ onBack, onComplete }: FreeTalkFlowProps) {
 
   const handleRecordToggle = async () => {
     if (isListening) {
-      const finalText = stopListening();
+      const finalText = await stopListening();
       const duration = (Date.now() - recordingStartRef.current) / 1000;
       setSpeakingTime(prev => prev + duration);
       
-      if (finalText.trim()) {
+      const text = finalText.trim() || transcript.trim();
+      if (text) {
         setMicStatus('processing');
-        await addUserMessage(finalText.trim());
+        await addUserMessage(text);
         setMicStatus('idle');
       } else {
         setMicStatus('idle');
@@ -154,11 +155,11 @@ export function FreeTalkFlow({ onBack, onComplete }: FreeTalkFlowProps) {
 
   const handleSendTranscript = async () => {
     if (transcript.trim()) {
-      const finalText = stopListening();
+      const finalText = await stopListening();
       const duration = (Date.now() - recordingStartRef.current) / 1000;
       setSpeakingTime(prev => prev + duration);
       
-      const textToSend = finalText || transcript.trim();
+      const textToSend = finalText.trim() || transcript.trim();
       resetTranscript();
       setMicStatus('processing');
       await addUserMessage(textToSend);

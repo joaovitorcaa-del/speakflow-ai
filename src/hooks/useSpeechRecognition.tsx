@@ -13,7 +13,7 @@ interface UseSpeechRecognitionReturn {
   isListening: boolean;
   isSupported: boolean;
   startListening: () => Promise<boolean>;
-  stopListening: () => string;
+  stopListening: () => Promise<string>;
   resetTranscript: () => void;
   permissionStatus: 'granted' | 'denied' | 'prompt' | 'unknown';
   error: string | null;
@@ -35,6 +35,7 @@ export function useSpeechRecognition({
   const recognitionRef = useRef<any>(null);
   const finalTranscriptRef = useRef('');
   const accumulatedRef = useRef('');
+  const lastInterimRef = useRef('');
   const isActiveRef = useRef(false);
   const restartCountRef = useRef(0);
   const maxRestarts = 8;
@@ -64,29 +65,6 @@ export function useSpeechRecognition({
     }
   }, []);
 
-  // Request microphone access
-  const requestMicrophoneAccess = useCallback(async (): Promise<boolean> => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      // Check if track is active
-      const audioTrack = stream.getAudioTracks()[0];
-      if (!audioTrack || !audioTrack.enabled) {
-        throw new Error('Microphone track not active');
-      }
-      // Stop the stream immediately, we just needed permission
-      stream.getTracks().forEach(track => track.stop());
-      setPermissionStatus('granted');
-      setError(null);
-      return true;
-    } catch (err) {
-      console.error('Microphone access error:', err);
-      setPermissionStatus('denied');
-      setError('Microphone permission required');
-      onError?.('Microphone permission required');
-      return false;
-    }
-  }, [onError]);
-
   // Initialize recognition
   const initRecognition = useCallback(() => {
     if (!isSupported) return null;
@@ -95,8 +73,6 @@ export function useSpeechRecognition({
     const SpeechRecognitionAPI = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     const recognition = new SpeechRecognitionAPI();
     
-    // iOS Safari works better with non-continuous mode
-    // We'll accumulate transcripts manually
     recognition.continuous = false;
     recognition.interimResults = true;
     recognition.lang = language;
@@ -122,6 +98,11 @@ export function useSpeechRecognition({
         }
       }
 
+      // Save interim as fallback for iOS
+      if (interimTranscript) {
+        lastInterimRef.current = interimTranscript;
+      }
+
       if (sessionFinal) {
         accumulatedRef.current += sessionFinal;
         finalTranscriptRef.current = accumulatedRef.current;
@@ -143,7 +124,6 @@ export function useSpeechRecognition({
         isActiveRef.current = false;
         setIsListening(false);
       } else if (event.error === 'no-speech') {
-        // This is normal, just restart if we're still supposed to be listening
         if (isActiveRef.current && continuous && restartCountRef.current < maxRestarts) {
           console.log('[SpeechRecognition] No speech detected, restarting...');
           restartCountRef.current++;
@@ -158,7 +138,6 @@ export function useSpeechRecognition({
           }, 100);
         }
       } else if (event.error === 'aborted') {
-        // Aborted is fine, happens on stop
         setIsListening(false);
       } else {
         setError(`Speech recognition error: ${event.error}`);
@@ -185,6 +164,13 @@ export function useSpeechRecognition({
         }, 100);
       } else {
         setIsListening(false);
+        // Use lastInterimRef as fallback if accumulated is empty (iOS fix)
+        if (!accumulatedRef.current.trim() && lastInterimRef.current.trim()) {
+          console.log('[SpeechRecognition] Using interim fallback for iOS');
+          accumulatedRef.current = lastInterimRef.current;
+          finalTranscriptRef.current = lastInterimRef.current;
+          setTranscript(lastInterimRef.current.trim());
+        }
         const finalText = accumulatedRef.current.trim();
         if (finalText && !isActiveRef.current) {
           onResult?.(finalText);
@@ -219,15 +205,10 @@ export function useSpeechRecognition({
       return false;
     }
 
-    // Request permission first
-    const hasPermission = await requestMicrophoneAccess();
-    if (!hasPermission) {
-      return false;
-    }
-
     // Reset state
     accumulatedRef.current = '';
     finalTranscriptRef.current = '';
+    lastInterimRef.current = '';
     restartCountRef.current = 0;
     setTranscript('');
     setError(null);
@@ -253,9 +234,9 @@ export function useSpeechRecognition({
       onError?.('Failed to start speech recognition');
       return false;
     }
-  }, [isSupported, requestMicrophoneAccess, initRecognition, onError]);
+  }, [isSupported, initRecognition, onError]);
 
-  const stopListening = useCallback((): string => {
+  const stopListening = useCallback(async (): Promise<string> => {
     console.log('[SpeechRecognition] Stop requested');
     isActiveRef.current = false;
     
@@ -267,8 +248,17 @@ export function useSpeechRecognition({
       }
     }
     
+    // Wait for iOS to deliver final result
+    await new Promise(resolve => setTimeout(resolve, 350));
+    
     setIsListening(false);
-    const finalText = accumulatedRef.current.trim();
+    
+    // Use accumulated or interim fallback
+    let finalText = accumulatedRef.current.trim();
+    if (!finalText && lastInterimRef.current.trim()) {
+      console.log('[SpeechRecognition] Using interim fallback in stopListening');
+      finalText = lastInterimRef.current.trim();
+    }
     
     if (finalText) {
       onResult?.(finalText);
@@ -281,6 +271,7 @@ export function useSpeechRecognition({
     setTranscript('');
     accumulatedRef.current = '';
     finalTranscriptRef.current = '';
+    lastInterimRef.current = '';
     restartCountRef.current = 0;
   }, []);
 
