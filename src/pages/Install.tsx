@@ -199,35 +199,77 @@ export default function Install() {
                 Instalar Agora
               </Button>
             ) : (
-              <Card className="p-5 space-y-4">
-                <h3 className="font-semibold text-foreground">
-                  Como instalar no Android
-                </h3>
-                <div className="space-y-3">
-                  <div className="flex items-start gap-3">
-                    <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
-                      <span className="text-primary font-bold text-sm">⋮</span>
+              <div className="space-y-4">
+                <Card className="p-5 space-y-4">
+                  <h3 className="font-semibold text-foreground">
+                    📱 Como instalar no Android
+                  </h3>
+                  <div className="space-y-3">
+                    <div className="flex items-start gap-3">
+                      <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+                        <span className="text-primary font-bold text-sm">⋮</span>
+                      </div>
+                      <div>
+                        <p className="font-medium text-foreground">1. Abra o menu</p>
+                        <p className="text-sm text-muted-foreground">
+                          Toque nos três pontos no canto superior direito
+                        </p>
+                      </div>
                     </div>
-                    <div>
-                      <p className="font-medium text-foreground">1. Abra o menu</p>
-                      <p className="text-sm text-muted-foreground">
-                        Toque nos três pontos no canto superior direito
-                      </p>
+                    <div className="flex items-start gap-3">
+                      <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+                        <Download className="w-4 h-4 text-primary" />
+                      </div>
+                      <div>
+                        <p className="font-medium text-foreground">2. Instalar app</p>
+                        <p className="text-sm text-muted-foreground">
+                          Selecione "Instalar app" ou "Adicionar à tela inicial"
+                        </p>
+                      </div>
                     </div>
                   </div>
-                  <div className="flex items-start gap-3">
-                    <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
-                      <Download className="w-4 h-4 text-primary" />
+                </Card>
+                <Card className="p-5 space-y-4">
+                  <h3 className="font-semibold text-foreground">
+                    🍎 Como instalar no iPhone
+                  </h3>
+                  <div className="space-y-3">
+                    <div className="flex items-start gap-3">
+                      <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+                        <Share className="w-4 h-4 text-primary" />
+                      </div>
+                      <div>
+                        <p className="font-medium text-foreground">1. Abra no Safari</p>
+                        <p className="text-sm text-muted-foreground">
+                          Toque no ícone de compartilhar (quadrado com seta) na barra inferior
+                        </p>
+                      </div>
                     </div>
-                    <div>
-                      <p className="font-medium text-foreground">2. Instalar app</p>
-                      <p className="text-sm text-muted-foreground">
-                        Selecione "Instalar app" ou "Adicionar à tela inicial"
-                      </p>
+                    <div className="flex items-start gap-3">
+                      <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+                        <Plus className="w-4 h-4 text-primary" />
+                      </div>
+                      <div>
+                        <p className="font-medium text-foreground">2. Adicionar à Tela de Início</p>
+                        <p className="text-sm text-muted-foreground">
+                          Role para baixo e selecione "Adicionar à Tela de Início"
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-start gap-3">
+                      <div className="w-8 h-8 rounded-full bg-accent/10 flex items-center justify-center shrink-0">
+                        <Check className="w-4 h-4 text-accent" />
+                      </div>
+                      <div>
+                        <p className="font-medium text-foreground">3. Confirmar</p>
+                        <p className="text-sm text-muted-foreground">
+                          Toque em "Adicionar" para instalar o app
+                        </p>
+                      </div>
                     </div>
                   </div>
-                </div>
-              </Card>
+                </Card>
+              </div>
             )}
           </>
         )}
