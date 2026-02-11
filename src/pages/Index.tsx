@@ -13,9 +13,10 @@ type AppView = "loading" | "onboarding" | "home" | "challenge" | "freetalk" | "j
 
 const Index = () => {
   const { user } = useAuth();
-  const { profile, loading: profileLoading, updateProfile } = useProfile();
+  const { profile, loading: profileLoading, updateProfile, createProfile } = useProfile();
   const [view, setView] = useState<AppView>("loading");
   const [weekProgress, setWeekProgress] = useState<boolean[]>([false, false, false, false, false, false, false]);
+  const [creatingProfile, setCreatingProfile] = useState(false);
 
   useEffect(() => {
     if (profileLoading) {
@@ -24,15 +25,18 @@ const Index = () => {
     }
 
     if (profile) {
-      // Check if user has completed onboarding (has goal set)
       if (profile.goal && profile.level) {
         setView("home");
         fetchWeekProgress();
       } else {
         setView("onboarding");
       }
+    } else if (user && !creatingProfile) {
+      // User authenticated but no profile — auto-create one
+      setCreatingProfile(true);
+      createProfile().finally(() => setCreatingProfile(false));
     }
-  }, [profile, profileLoading]);
+  }, [profile, profileLoading, user]);
 
   const fetchWeekProgress = async () => {
     if (!user) return;
