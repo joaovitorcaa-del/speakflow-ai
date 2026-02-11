@@ -399,6 +399,15 @@ export function FreeTalkFlow({ onBack, onComplete }: FreeTalkFlowProps) {
         
         <div className="flex justify-center gap-4 items-center">
           <Button
+            variant="soft-muted"
+            size="sm"
+            className="rounded-full"
+            onClick={handleFinish}
+          >
+            Finalizar
+          </Button>
+
+          <Button
             variant={isListening ? "record" : "hero"}
             size="icon-lg"
             className={cn("w-16 h-16 rounded-full", isListening && "animate-pulse-glow")}
@@ -414,7 +423,7 @@ export function FreeTalkFlow({ onBack, onComplete }: FreeTalkFlowProps) {
             )}
           </Button>
           
-          {transcript && (
+          {transcript ? (
             <Button
               variant="hero"
               size="icon-lg"
@@ -423,6 +432,8 @@ export function FreeTalkFlow({ onBack, onComplete }: FreeTalkFlowProps) {
             >
               <Send className="w-6 h-6" />
             </Button>
+          ) : (
+            <div className="w-[4.5rem]" />
           )}
         </div>
       </div>
