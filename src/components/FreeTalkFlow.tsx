@@ -128,6 +128,18 @@ export function FreeTalkFlow({ onBack, onComplete }: FreeTalkFlowProps) {
     onComplete(minutesSpoken);
   };
 
+  const handleBack = async () => {
+    if (isListening) {
+      await stopListening();
+    }
+    if (speakingTime > 0) {
+      const minutesSpoken = Math.max(1, Math.ceil(speakingTime / 60));
+      onComplete(minutesSpoken);
+    } else {
+      onBack();
+    }
+  };
+
   const handleRecordToggle = async () => {
     if (isListening) {
       const finalText = await stopListening();
@@ -236,7 +248,7 @@ export function FreeTalkFlow({ onBack, onComplete }: FreeTalkFlowProps) {
     <div className="min-h-[100dvh] bg-background flex flex-col overflow-x-hidden">
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-4 border-b bg-card shrink-0">
-        <Button variant="ghost" size="icon-sm" onClick={onBack}>
+        <Button variant="ghost" size="icon-sm" onClick={handleBack}>
           <ArrowLeft className="w-5 h-5" />
         </Button>
         <div className="text-center">
