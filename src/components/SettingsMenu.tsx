@@ -29,24 +29,41 @@ import {
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { useProfile } from "@/hooks/useProfile";
+import { supabase } from "@/integrations/supabase/client";
+import { toast } from "@/hooks/use-toast";
 
 export function SettingsMenu() {
-  const { signOut, deleteAccount } = useAuth();
+  const { user, signOut, deleteAccount } = useAuth();
   const { profile, updateProfile } = useProfile();
   const [showProfile, setShowProfile] = useState(false);
   const [showPlan, setShowPlan] = useState(false);
   const [showDelete, setShowDelete] = useState(false);
   const [displayName, setDisplayName] = useState("");
+  const [newEmail, setNewEmail] = useState("");
   const [saving, setSaving] = useState(false);
 
   const handleOpenProfile = () => {
     setDisplayName(profile?.display_name || "");
+    setNewEmail(user?.email || "");
     setShowProfile(true);
   };
 
   const handleSaveProfile = async () => {
     setSaving(true);
+    
+    // Update display name
     await updateProfile({ display_name: displayName });
+    
+    // Update email if changed
+    if (newEmail && newEmail !== user?.email) {
+      const { error } = await supabase.auth.updateUser({ email: newEmail });
+      if (error) {
+        toast({ title: "Erro ao atualizar email", description: error.message, variant: "destructive" });
+      } else {
+        toast({ title: "Email atualizado", description: "Verifique seu novo email para confirmar a alteração." });
+      }
+    }
+    
     setSaving(false);
     setShowProfile(false);
   };
@@ -140,6 +157,19 @@ export function SettingsMenu() {
                 onChange={(e) => setDisplayName(e.target.value)}
                 placeholder="Seu nome"
               />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-email">Email</Label>
+              <Input
+                id="edit-email"
+                type="email"
+                value={newEmail}
+                onChange={(e) => setNewEmail(e.target.value)}
+                placeholder="seu@email.com"
+              />
+              <p className="text-xs text-muted-foreground">
+                Ao alterar, um email de confirmação será enviado.
+              </p>
             </div>
           </div>
           <DialogFooter>
