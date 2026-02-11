@@ -1,115 +1,142 @@
 
 
-# Historico por Calendario com Heatmap e Resumo Diario
+# Tema Principal: Selecao, Ajuste e Conteudo Dinamico
 
 ## Visao Geral
 
-Ao tocar nos dias da semana no topo da Home (area do StreakDisplay), abre um modal/drawer com:
+Quatro mudancas interligadas que tornam o conteudo dos desafios dinamico, tematico e progressivo:
 
-1. **Calendario heatmap** -- mostra todos os dias com desafios concluidos (verde), parciais (amarelo), e inativos (cinza)
-2. **Medalhas semanais** -- um pequeno emoji/icone ao lado de cada linha de semana no calendario
-3. **Resumo do dia selecionado** -- ao tocar em um dia, exibe na base: minutos falados, se o desafio foi concluido, score medio
-4. **Totais da jornada** -- no topo do modal: total de minutos falados e total de palavras aprendidas desde o inicio
+1. Tela de selecao de tema no final do onboarding
+2. Opcao de ajuste de tema no Menu de configuracoes
+3. Edge function para gerar conteudo de desafio dinamico via IA (substituindo o conteudo hardcoded)
+4. Integracao do vocabulario aprendido nas frases geradas
 
-## Estrutura da Implementacao
+## Detalhes da Implementacao
 
-### 1. Novo componente: `src/components/CalendarHistoryModal.tsx`
+### 1. Tela de selecao de tema no onboarding
 
-Modal (usando Drawer no mobile para melhor UX) contendo:
+**Arquivo: `src/components/AppPreviewCarousel.tsx`**
 
-- **Header motivacional**: Total de minutos falados na jornada + total de palavras aprendidas (dados do `profiles` e `vocabulary_words`)
-- **Calendario**: Usando `react-day-picker` (ja instalado) com estilizacao customizada para heatmap
-  - Dias com `challenge_completed = true`: fundo verde (accent)
-  - Dias com `speaking_minutes > 0` mas sem desafio completo: fundo amarelo suave
-  - Dias sem atividade: neutro
-- **Medalhas por semana**: Para cada semana visivel, calcula o progresso e exibe um emoji pequeno (🥇🥈🥉) ao lado da linha
-- **Resumo do dia selecionado**: Card na base mostrando:
-  - Data formatada
-  - Minutos falados
-  - Desafio concluido ou nao
-  - Scores medios (fluencia, pronuncia, clareza) se disponiveis
+Adicionar um slide final (antes do "Pronto para comecar?") com selecao de tema. Os temas disponiveis:
 
-### 2. Novo hook: `src/hooks/useCalendarHistory.tsx`
+| Valor | Label | Icone |
+|-------|-------|-------|
+| `work` | Trabalho e Carreira | Briefcase |
+| `travel` | Viagens | Plane |
+| `conversation` | Conversacao do Dia a Dia | MessageCircle |
+| `study` | Estudos e Intercambio | GraduationCap |
 
-Responsavel por buscar os dados historicos:
+O slide tera cards selecionaveis (estilo radio visual). A selecao sera armazenada em estado local e passada ao `onComplete`.
 
-- Busca `daily_progress` do usuario filtrando pelo mes visivel (com margem para semanas parciais)
-- Busca totais da jornada: `profiles.total_speaking_minutes` e count de `vocabulary_words` com `is_confident = true`
-- Calcula medalhas por semana agrupando os dados semanalmente e aplicando a mesma logica do `useWeeklyStats` (Bronze 60%, Prata 100%, Ouro 120%)
-- Retorna os dados formatados para o calendario
+**Arquivo: `src/components/Onboarding.tsx`**
 
-### 3. Modificacao: `src/components/StreakDisplay.tsx`
+Atualizar a interface para receber o tema selecionado e repassar ao `onComplete`.
 
-- Tornar a area dos dias da semana clicavel (adicionar `onClick` prop)
-- Quando tocado, dispara a abertura do modal de calendario
+**Arquivo: `src/pages/Index.tsx`**
 
-### 4. Modificacao: `src/components/HomeScreen.tsx`
-
-- Importar e renderizar o `CalendarHistoryModal`
-- Gerenciar o estado `showCalendar` (aberto/fechado)
-- Passar o callback para o `StreakDisplay`
-
-## Detalhes Tecnicos
-
-### Dados necessarios (todos ja existem no banco)
-
-| Tabela | Campos usados |
-|--------|--------------|
-| `daily_progress` | date, challenge_completed, speaking_minutes, fluency_score, pronunciation_score, clarity_score |
-| `profiles` | total_speaking_minutes |
-| `vocabulary_words` | count onde is_confident = true |
-
-### Calculo de medalha semanal
-
-Reutiliza a mesma logica do `useWeeklyStats`:
-- Agrupa dias por semana (domingo a sabado)
-- Calcula: `minutesProgress = (minutos / 150) * 60` + `daysProgress = (diasAtivos / 7) * 40`
-- Bronze >= 60%, Prata >= 100%, Ouro >= 120%
-
-### Estilizacao do heatmap no DayPicker
-
-- Usa `modifiers` e `modifiersClassNames` do react-day-picker para aplicar cores condicionais
-- Dias completos: `bg-accent/80 text-accent-foreground`
-- Dias parciais: `bg-yellow-400/30`
-- Dia selecionado: borda primary
-
-### Navegacao entre meses
-
-- O DayPicker ja suporta navegacao por mes nativamente
-- Ao mudar de mes, o hook refaz a query para o novo intervalo
-
-### Layout do modal
-
-```text
-+------------------------------------------+
-|  Sua Jornada                        [X]  |
-|                                          |
-|  🎯 142 min falados   📚 23 palavras    |
-|                                          |
-|  < Janeiro 2026 >                        |
-|  S  M  T  W  T  F  S              Medal  |
-|  .  .  .  1  2  3  4              --     |
-|  5  6  7  8  9  10 11             🥉     |
-|  12 13 14 15 16 17 18             🥈     |
-|  19 20 21 22 23 24 25             🥇     |
-|  26 27 28 29 30 31  .             --     |
-|                                          |
-|  ┌──────────────────────────────────┐    |
-|  │ 📅 15 de janeiro                 │    |
-|  │ ✅ Desafio concluido             │    |
-|  │ 🎤 22 min falados                │    |
-|  │ Fluencia: 78  Pronuncia: 82     │    |
-|  └──────────────────────────────────┘    |
-+------------------------------------------+
+Atualizar `handleOnboardingComplete` para receber o tema e salvar no profile:
+```
+await updateProfile({ goal: selectedGoal, level: 'beginner' });
 ```
 
-### Arquivos criados/modificados
+### 2. Ajuste de tema no Menu
+
+**Arquivo: `src/components/SettingsMenu.tsx`**
+
+Adicionar novo item "Tema" no dropdown e um Dialog para selecao:
+- Mostra os 4 temas com radio buttons estilizados
+- Indica o tema atual com check
+- Ao salvar, chama `updateProfile({ goal: newGoal })`
+- Posicionar entre "Plano" e "Dados pessoais"
+
+### 3. Edge Function para gerar desafios dinamicos
+
+**Arquivo: `supabase/functions/generate-challenge/index.ts`** (novo)
+
+Nova edge function que gera conteudo de desafio usando IA. Recebe:
+- `goal`: tema do usuario (work, travel, conversation, study)
+- `level`: nivel atual (beginner, intermediate, advanced)
+- `date`: data atual (para seed de variacao)
+- `vocabularyWords`: lista de palavras aprendidas recentemente para incorporar
+
+Retorna JSON com:
+```json
+{
+  "title": "Titulo do desafio em portugues",
+  "inputText": "Texto de input longo em ingles (3 paragrafos)",
+  "shadowingSentences": ["10 frases extraidas/relacionadas ao input"],
+  "questions": ["4 perguntas abertas de output"]
+}
+```
+
+O prompt da IA instrui:
+- Gerar conteudo aderente ao tema mas com sub-topicos variados a cada dia (usando a data como seed)
+- Incorporar 2-3 palavras do vocabulario aprendido nas frases de shadowing e nas perguntas de output
+- Ajustar complexidade ao nivel do usuario
+- Nunca repetir o mesmo cenario exato
+
+**Arquivo: `src/components/ChallengeFlow.tsx`**
+
+Mudancas principais:
+- Remover o objeto `goalThemes` hardcoded
+- Ao montar, chamar a edge function `generate-challenge` para obter o conteudo
+- Mostrar loading enquanto gera
+- Cachear o conteudo gerado na `challenge_sessions` (campo novo `challenge_content` jsonb) para nao regerar ao retomar
+- Buscar vocabulario recente do usuario (ultimas 20 palavras confident) para enviar a edge function
+
+### 4. Persistir conteudo gerado na sessao
+
+**Migracao de banco:**
+
+Adicionar coluna `challenge_content` (jsonb, nullable) a tabela `challenge_sessions` para armazenar o conteudo gerado e permitir retomada sem regerar.
+
+```sql
+ALTER TABLE challenge_sessions ADD COLUMN challenge_content jsonb;
+```
+
+## Fluxo Tecnico
+
+```text
+Onboarding (selecao tema)
+        |
+        v
+  profiles.goal = 'work' | 'travel' | 'conversation' | 'study'
+        |
+        v
+  ChallengeFlow monta
+        |
+        +--> Tem challenge_sessions.challenge_content para hoje? 
+        |         SIM --> Usa conteudo salvo
+        |         NAO --> Chama generate-challenge
+        |                    |
+        |                    +--> Envia: goal, level, date, vocabularyWords[]
+        |                    |
+        |                    +--> Recebe: title, inputText, shadowingSentences, questions
+        |                    |
+        |                    +--> Salva em challenge_sessions.challenge_content
+        |
+        v
+  Desafio com conteudo dinamico
+```
+
+## Arquivos criados/modificados
 
 | Arquivo | Acao |
 |---------|------|
-| `src/hooks/useCalendarHistory.tsx` | Criar -- hook para dados do calendario |
-| `src/components/CalendarHistoryModal.tsx` | Criar -- modal com calendario heatmap |
-| `src/components/StreakDisplay.tsx` | Modificar -- adicionar onClick |
-| `src/components/HomeScreen.tsx` | Modificar -- integrar modal |
+| `supabase/functions/generate-challenge/index.ts` | Criar -- edge function de geracao de desafio |
+| `src/components/AppPreviewCarousel.tsx` | Modificar -- adicionar slide de selecao de tema |
+| `src/components/Onboarding.tsx` | Modificar -- repassar tema selecionado |
+| `src/pages/Index.tsx` | Modificar -- salvar tema no profile |
+| `src/components/SettingsMenu.tsx` | Modificar -- adicionar opcao de ajuste de tema |
+| `src/components/ChallengeFlow.tsx` | Modificar -- substituir hardcoded por geracao dinamica |
+| Migracao SQL | Criar -- adicionar coluna `challenge_content` em `challenge_sessions` |
 
-Nenhuma alteracao de banco de dados e necessaria -- todos os dados ja existem nas tabelas atuais.
+## Detalhes do Prompt da Edge Function
+
+O prompt da IA para geracao de desafios incluira:
+- Instrucao para variar sub-topicos dentro do tema principal com base na data
+- Lista de palavras do vocabulario aprendido para incorporar naturalmente nas frases
+- Regra de ajuste de complexidade por nivel (beginner: frases curtas e vocabulario simples; advanced: frases compostas e vocabulario rico)
+- Exigencia de 10 frases de shadowing e 4 perguntas de output
+- Proibicao de repetir cenarios exatos de dias anteriores
+
