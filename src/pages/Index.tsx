@@ -136,9 +136,9 @@ const Index = () => {
     }
   };
 
-  const handleOnboardingComplete = async () => {
+  const handleOnboardingComplete = async (selectedGoal: string) => {
     await updateProfile({
-      goal: 'conversation',
+      goal: selectedGoal || 'conversation',
       level: 'beginner'
     });
     setView("home");

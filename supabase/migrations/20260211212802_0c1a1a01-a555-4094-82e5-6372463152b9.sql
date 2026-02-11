@@ -1,0 +1,1 @@
+ALTER TABLE public.challenge_sessions ADD COLUMN challenge_content jsonb;

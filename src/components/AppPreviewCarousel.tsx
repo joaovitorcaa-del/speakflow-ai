@@ -12,13 +12,24 @@ import {
   TrendingUp,
   MessageCircle,
   Heart,
-  Zap
+  Zap,
+  Briefcase,
+  Plane,
+  GraduationCap,
+  Check
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface AppPreviewCarouselProps {
-  onComplete: () => void;
+  onComplete: (selectedGoal: string) => void;
 }
+
+const goalOptions = [
+  { value: "work", label: "Trabalho e Carreira", Icon: Briefcase },
+  { value: "travel", label: "Viagens", Icon: Plane },
+  { value: "conversation", label: "Conversação do Dia a Dia", Icon: MessageCircle },
+  { value: "study", label: "Estudos e Intercâmbio", Icon: GraduationCap },
+];
 
 interface SlideContent {
   icon: React.ReactNode;
@@ -224,41 +235,23 @@ const slides: SlideContent[] = [
       </div>
     ),
   },
-  {
-    icon: <Zap className="w-7 h-7" />,
-    iconBg: "bg-primary",
-    title: "Pronto para começar?",
-    subtitle: "A fluência vem no caminho",
-    content: (
-      <div className="space-y-3 text-center">
-        <p className="text-muted-foreground text-sm">
-          Um <strong className="text-foreground">caminho claro, humano e sustentável</strong>.
-        </p>
-        <div className="py-4">
-          <div className="w-16 h-16 rounded-full bg-gradient-to-br from-primary to-accent mx-auto flex items-center justify-center shadow-glow">
-            <Mic className="w-8 h-8 text-primary-foreground" />
-          </div>
-        </div>
-        <p className="text-base font-semibold">Fale hoje. Fale amanhã.</p>
-        <p className="text-muted-foreground text-sm">A fluência vem no caminho.</p>
-      </div>
-    ),
-  },
 ];
 
 export function AppPreviewCarousel({ onComplete }: AppPreviewCarouselProps) {
   const [currentSlide, setCurrentSlide] = useState(0);
+  const [selectedGoal, setSelectedGoal] = useState("conversation");
   const containerRef = useRef<HTMLDivElement>(null);
   const startX = useRef(0);
   const isDragging = useRef(false);
 
-  const isLastSlide = currentSlide === slides.length - 1;
+  const totalSlides = slides.length + 2; // + theme slide + final slide
+  const isThemeSlide = currentSlide === slides.length;
+  const isLastSlide = currentSlide === totalSlides - 1;
 
   const goTo = (index: number) => {
-    setCurrentSlide(Math.max(0, Math.min(index, slides.length - 1)));
+    setCurrentSlide(Math.max(0, Math.min(index, totalSlides - 1)));
   };
 
-  // Swipe handling
   const handleTouchStart = (e: React.TouchEvent) => {
     startX.current = e.touches[0].clientX;
     isDragging.current = true;
@@ -268,98 +261,145 @@ export function AppPreviewCarousel({ onComplete }: AppPreviewCarouselProps) {
     if (!isDragging.current) return;
     const diff = startX.current - e.changedTouches[0].clientX;
     if (Math.abs(diff) > 50) {
-      if (diff > 0 && currentSlide < slides.length - 1) goTo(currentSlide + 1);
+      if (diff > 0 && currentSlide < totalSlides - 1) goTo(currentSlide + 1);
       else if (diff < 0 && currentSlide > 0) goTo(currentSlide - 1);
     }
     isDragging.current = false;
   };
 
-  const slide = slides[currentSlide];
+  const renderDots = () => (
+    <div className="flex justify-center gap-1.5 mt-4 pt-4 border-t border-border/50">
+      {Array.from({ length: totalSlides }).map((_, i) => (
+        <button
+          key={i}
+          onClick={() => goTo(i)}
+          className={cn(
+            "h-1.5 rounded-full transition-all duration-300",
+            i === currentSlide ? "w-6 bg-primary" : i < currentSlide ? "w-2 bg-primary/50" : "w-2 bg-muted"
+          )}
+        />
+      ))}
+    </div>
+  );
+
+  const renderSlideContent = () => {
+    if (isThemeSlide) {
+      return (
+        <Card variant="elevated" padding="lg" className="w-full max-w-sm animate-fade-in-up">
+          <div className="flex items-center gap-3 mb-4">
+            <div className="w-12 h-12 rounded-2xl flex items-center justify-center text-primary-foreground bg-accent">
+              <Target className="w-7 h-7" />
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground">Personalização</p>
+              <h2 className="text-xl font-bold">Qual seu foco?</h2>
+            </div>
+          </div>
+          <div className="min-h-[200px]">
+            <p className="text-muted-foreground text-sm mb-4">Escolha o tema principal dos seus desafios diários:</p>
+            <div className="space-y-2">
+              {goalOptions.map((opt) => (
+                <button
+                  key={opt.value}
+                  onClick={() => setSelectedGoal(opt.value)}
+                  className={cn(
+                    "w-full flex items-center gap-3 p-3 rounded-xl border-2 transition-all text-left",
+                    selectedGoal === opt.value ? "border-primary bg-primary/10" : "border-border hover:border-primary/40"
+                  )}
+                >
+                  <div className={cn(
+                    "w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0",
+                    selectedGoal === opt.value ? "bg-primary text-primary-foreground" : "bg-muted"
+                  )}>
+                    <opt.Icon className="w-4 h-4" />
+                  </div>
+                  <span className="text-sm font-medium flex-1">{opt.label}</span>
+                  {selectedGoal === opt.value && <Check className="w-4 h-4 text-primary" />}
+                </button>
+              ))}
+            </div>
+          </div>
+          {renderDots()}
+        </Card>
+      );
+    }
+
+    if (isLastSlide) {
+      return (
+        <Card variant="elevated" padding="lg" className="w-full max-w-sm animate-fade-in-up">
+          <div className="flex items-center gap-3 mb-4">
+            <div className="w-12 h-12 rounded-2xl flex items-center justify-center text-primary-foreground bg-primary">
+              <Zap className="w-7 h-7" />
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground">A fluência vem no caminho</p>
+              <h2 className="text-xl font-bold">Pronto para começar?</h2>
+            </div>
+          </div>
+          <div className="min-h-[200px]">
+            <div className="space-y-3 text-center">
+              <p className="text-muted-foreground text-sm">
+                Um <strong className="text-foreground">caminho claro, humano e sustentável</strong>.
+              </p>
+              <div className="py-4">
+                <div className="w-16 h-16 rounded-full bg-gradient-to-br from-primary to-accent mx-auto flex items-center justify-center shadow-glow">
+                  <Mic className="w-8 h-8 text-primary-foreground" />
+                </div>
+              </div>
+              <p className="text-base font-semibold">Fale hoje. Fale amanhã.</p>
+              <p className="text-muted-foreground text-sm">A fluência vem no caminho.</p>
+            </div>
+          </div>
+          {renderDots()}
+        </Card>
+      );
+    }
+
+    const slide = slides[currentSlide];
+    return (
+      <Card key={currentSlide} variant="elevated" padding="lg" className="w-full max-w-sm animate-fade-in-up">
+        <div className="flex items-center gap-3 mb-4">
+          <div className={cn("w-12 h-12 rounded-2xl flex items-center justify-center text-primary-foreground", slide.iconBg)}>
+            {slide.icon}
+          </div>
+          <div>
+            {slide.subtitle && <p className="text-xs text-muted-foreground">{slide.subtitle}</p>}
+            <h2 className="text-xl font-bold">{slide.title}</h2>
+          </div>
+        </div>
+        <div className="min-h-[200px]">{slide.content}</div>
+        {renderDots()}
+      </Card>
+    );
+  };
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
-      {/* Header with skip */}
       <div className="flex items-center justify-end px-6 pt-6 pb-2">
         {!isLastSlide && (
-          <Button variant="ghost" size="sm" onClick={onComplete} className="text-muted-foreground">
+          <Button variant="ghost" size="sm" onClick={() => onComplete(selectedGoal)} className="text-muted-foreground">
             Pular
           </Button>
         )}
       </div>
 
-      {/* Centered card carousel */}
-      <div 
+      <div
         className="flex-1 flex items-center justify-center px-6 py-4"
         ref={containerRef}
         onTouchStart={handleTouchStart}
         onTouchEnd={handleTouchEnd}
       >
-        <Card 
-          key={currentSlide}
-          variant="elevated" 
-          padding="lg" 
-          className="w-full max-w-sm animate-fade-in-up"
-        >
-          {/* Card header */}
-          <div className="flex items-center gap-3 mb-4">
-            <div className={cn(
-              "w-12 h-12 rounded-2xl flex items-center justify-center text-primary-foreground",
-              slide.iconBg
-            )}>
-              {slide.icon}
-            </div>
-            <div>
-              {slide.subtitle && (
-                <p className="text-xs text-muted-foreground">{slide.subtitle}</p>
-              )}
-              <h2 className="text-xl font-bold">{slide.title}</h2>
-            </div>
-          </div>
-
-          {/* Card content */}
-          <div className="min-h-[200px]">
-            {slide.content}
-          </div>
-
-          {/* Progress dots inside card */}
-          <div className="flex justify-center gap-1.5 mt-4 pt-4 border-t border-border/50">
-            {slides.map((_, i) => (
-              <button
-                key={i}
-                onClick={() => goTo(i)}
-                className={cn(
-                  "h-1.5 rounded-full transition-all duration-300",
-                  i === currentSlide 
-                    ? "w-6 bg-primary" 
-                    : i < currentSlide 
-                      ? "w-2 bg-primary/50" 
-                      : "w-2 bg-muted"
-                )}
-              />
-            ))}
-          </div>
-        </Card>
+        {renderSlideContent()}
       </div>
 
-      {/* Bottom button */}
       <div className="px-6 pb-8 pt-2">
         {isLastSlide ? (
-          <Button
-            variant="hero"
-            size="lg"
-            className="w-full"
-            onClick={onComplete}
-          >
+          <Button variant="hero" size="lg" className="w-full" onClick={() => onComplete(selectedGoal)}>
             Começar minha jornada
             <ArrowRight className="w-5 h-5" />
           </Button>
         ) : (
-          <Button
-            variant="soft"
-            size="lg"
-            className="w-full"
-            onClick={() => goTo(currentSlide + 1)}
-          >
+          <Button variant="soft" size="lg" className="w-full" onClick={() => goTo(currentSlide + 1)}>
             Continuar
             <ArrowRight className="w-5 h-5" />
           </Button>

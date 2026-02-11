@@ -93,6 +93,7 @@ export type Database = {
       }
       challenge_sessions: {
         Row: {
+          challenge_content: Json | null
           completed: boolean
           created_at: string
           current_index: number
@@ -106,6 +107,7 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          challenge_content?: Json | null
           completed?: boolean
           created_at?: string
           current_index?: number
@@ -119,6 +121,7 @@ export type Database = {
           user_id: string
         }
         Update: {
+          challenge_content?: Json | null
           completed?: boolean
           created_at?: string
           current_index?: number
