@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Onboarding, OnboardingData } from "@/components/Onboarding";
+import { Onboarding } from "@/components/Onboarding";
 import { HomeScreen } from "@/components/HomeScreen";
 import { ChallengeFlow } from "@/components/ChallengeFlow";
 import { FreeTalkFlow } from "@/components/FreeTalkFlow";
@@ -136,10 +136,10 @@ const Index = () => {
     }
   };
 
-  const handleOnboardingComplete = async (data: OnboardingData) => {
+  const handleOnboardingComplete = async () => {
     await updateProfile({
-      goal: data.goal,
-      level: data.level
+      goal: 'conversation',
+      level: 'beginner'
     });
     setView("home");
   };
