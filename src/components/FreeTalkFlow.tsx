@@ -26,10 +26,7 @@ interface Message {
   id: string;
   role: "user" | "assistant";
   content: string;
-  feedback?: {
-    positiveNote?: string;
-    tip?: string;
-  };
+  sent?: boolean;
 }
 
 const conversationStarters = [
@@ -43,11 +40,10 @@ export function FreeTalkFlow({ onBack, onComplete }: FreeTalkFlowProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
   const [playingId, setPlayingId] = useState<string | null>(null);
-  const [elapsedTime, setElapsedTime] = useState(0);
+  const [speakingTime, setSpeakingTime] = useState(0); // actual speaking seconds
   const [micStatus, setMicStatus] = useState<'idle' | 'listening' | 'processing' | 'error'>('idle');
   const audioRef = useRef<HTMLAudioElement | null>(null);
-  const timerRef = useRef<NodeJS.Timeout | null>(null);
-  const startTimeRef = useRef<number>(Date.now());
+  const recordingStartRef = useRef<number>(0);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
 
   const { 
@@ -62,38 +58,19 @@ export function FreeTalkFlow({ onBack, onComplete }: FreeTalkFlowProps) {
   } = useSpeechRecognition({
     language: 'en-US',
     continuous: true,
-    onPartialResult: (partial) => {
-      // Real-time transcript update handled by state
-    },
     onError: (error) => {
       console.error("Speech recognition error:", error);
       setMicStatus('error');
     }
   });
 
-  // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, transcript]);
 
-  // Initialize with a greeting
   useEffect(() => {
     const greeting = conversationStarters[Math.floor(Math.random() * conversationStarters.length)];
-    setMessages([{
-      id: "initial",
-      role: "assistant",
-      content: greeting
-    }]);
-    startTimeRef.current = Date.now();
-    
-    // Start timer
-    timerRef.current = setInterval(() => {
-      setElapsedTime(Math.floor((Date.now() - startTimeRef.current) / 1000));
-    }, 1000);
-
-    return () => {
-      if (timerRef.current) clearInterval(timerRef.current);
-    };
+    setMessages([{ id: "initial", role: "assistant", content: greeting }]);
   }, []);
 
   const formatTime = (seconds: number) => {
@@ -121,10 +98,7 @@ export function FreeTalkFlow({ onBack, onComplete }: FreeTalkFlowProps) {
             apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
             Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
           },
-          body: JSON.stringify({ 
-            text,
-            voiceId: "EXAVITQu4vr4xnSDxMaL"
-          }),
+          body: JSON.stringify({ text, voiceId: "EXAVITQu4vr4xnSDxMaL" }),
         }
       );
 
@@ -133,18 +107,12 @@ export function FreeTalkFlow({ onBack, onComplete }: FreeTalkFlowProps) {
       const audioBlob = await response.blob();
       const audioUrl = URL.createObjectURL(audioBlob);
       
-      if (audioRef.current) {
-        audioRef.current.pause();
-      }
+      if (audioRef.current) audioRef.current.pause();
 
       const audio = new Audio(audioUrl);
       audioRef.current = audio;
       
-      audio.onended = () => {
-        setIsPlaying(false);
-        setPlayingId(null);
-      };
-
+      audio.onended = () => { setIsPlaying(false); setPlayingId(null); };
       setIsPlaying(true);
       setPlayingId(messageId);
       audio.play();
@@ -156,22 +124,26 @@ export function FreeTalkFlow({ onBack, onComplete }: FreeTalkFlowProps) {
   };
 
   const handleFinish = () => {
-    const minutesSpoken = Math.ceil(elapsedTime / 60);
+    const minutesSpoken = Math.max(1, Math.ceil(speakingTime / 60));
     onComplete(minutesSpoken);
   };
 
   const handleRecordToggle = async () => {
     if (isListening) {
-      // Stop and send
       const finalText = stopListening();
+      const duration = (Date.now() - recordingStartRef.current) / 1000;
+      setSpeakingTime(prev => prev + duration);
+      
       if (finalText.trim()) {
         setMicStatus('processing');
         await addUserMessage(finalText.trim());
         setMicStatus('idle');
+      } else {
+        setMicStatus('idle');
       }
       resetTranscript();
     } else {
-      // Start listening
+      recordingStartRef.current = Date.now();
       setMicStatus('listening');
       const started = await startListening();
       if (!started) {
@@ -183,6 +155,9 @@ export function FreeTalkFlow({ onBack, onComplete }: FreeTalkFlowProps) {
   const handleSendTranscript = async () => {
     if (transcript.trim()) {
       const finalText = stopListening();
+      const duration = (Date.now() - recordingStartRef.current) / 1000;
+      setSpeakingTime(prev => prev + duration);
+      
       const textToSend = finalText || transcript.trim();
       resetTranscript();
       setMicStatus('processing');
@@ -195,23 +170,20 @@ export function FreeTalkFlow({ onBack, onComplete }: FreeTalkFlowProps) {
     const newMessage: Message = {
       id: Date.now().toString(),
       role: "user",
-      content
+      content,
+      sent: true,
     };
     setMessages(prev => [...prev, newMessage]);
     setIsLoading(true);
 
     try {
-      // Build conversation history for AI
       const conversationHistory = messages.map(m => ({
         role: m.role,
         content: m.content
       }));
 
       const { data, error } = await supabase.functions.invoke('free-talk', {
-        body: { 
-          userMessage: content,
-          conversationHistory
-        }
+        body: { userMessage: content, conversationHistory }
       });
 
       if (error) throw error;
@@ -224,7 +196,6 @@ export function FreeTalkFlow({ onBack, onComplete }: FreeTalkFlowProps) {
       setMessages(prev => [...prev, aiResponse]);
     } catch (error) {
       console.error("Error getting AI response:", error);
-      // Fallback response
       const fallbackResponse: Message = {
         id: (Date.now() + 1).toString(),
         role: "assistant",
@@ -261,15 +232,17 @@ export function FreeTalkFlow({ onBack, onComplete }: FreeTalkFlowProps) {
   };
 
   return (
-    <div className="min-h-screen bg-background flex flex-col">
+    <div className="min-h-[100dvh] bg-background flex flex-col overflow-x-hidden">
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-4 border-b bg-card">
+      <div className="flex items-center justify-between px-4 py-4 border-b bg-card shrink-0">
         <Button variant="ghost" size="icon-sm" onClick={onBack}>
           <ArrowLeft className="w-5 h-5" />
         </Button>
         <div className="text-center">
           <h1 className="font-semibold">Free Talk</h1>
-          <p className="text-xs text-muted-foreground">{formatTime(elapsedTime)}</p>
+          <p className="text-xs text-muted-foreground">
+            🎙️ {formatTime(Math.round(speakingTime))} falados
+          </p>
         </div>
         <Button variant="soft" size="sm" onClick={handleFinish}>
           Finalizar
@@ -278,7 +251,6 @@ export function FreeTalkFlow({ onBack, onComplete }: FreeTalkFlowProps) {
 
       {/* Messages */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
-        {/* AI Analysis Notice */}
         <div className="flex justify-center">
           <span className="text-xs text-muted-foreground bg-muted px-3 py-1 rounded-full">
             Cada resposta é analisada individualmente pela IA
@@ -302,6 +274,12 @@ export function FreeTalkFlow({ onBack, onComplete }: FreeTalkFlowProps) {
               )}
             >
               <p className="text-sm">{message.content}</p>
+              {message.role === "user" && message.sent && (
+                <div className="flex items-center gap-1 mt-1 justify-end">
+                  <CheckCircle2 className="w-3 h-3 opacity-70" />
+                  <span className="text-[10px] opacity-70">Enviado</span>
+                </div>
+              )}
               {message.role === "assistant" && (
                 <Button
                   variant="ghost"
@@ -323,7 +301,7 @@ export function FreeTalkFlow({ onBack, onComplete }: FreeTalkFlowProps) {
           </div>
         ))}
         
-        {/* Show current transcript while speaking */}
+        {/* Current transcript */}
         {transcript && (
           <div className="flex justify-end gap-2">
             <Card variant="default" padding="sm" className="max-w-[80%] bg-muted border-dashed border-primary/30">
@@ -336,7 +314,6 @@ export function FreeTalkFlow({ onBack, onComplete }: FreeTalkFlowProps) {
           </div>
         )}
         
-        {/* Loading indicator */}
         {isLoading && (
           <div className="flex justify-start">
             <Card variant="default" padding="sm">
@@ -352,7 +329,7 @@ export function FreeTalkFlow({ onBack, onComplete }: FreeTalkFlowProps) {
       </div>
 
       {/* Recording Area */}
-      <div className="border-t bg-card p-4">
+      <div className="border-t bg-card p-4 shrink-0">
         {!isSupported && (
           <div className="flex items-center justify-center gap-2 text-destructive mb-3 p-2 bg-destructive/10 rounded-lg">
             <AlertCircle className="w-4 h-4" />
@@ -366,7 +343,6 @@ export function FreeTalkFlow({ onBack, onComplete }: FreeTalkFlowProps) {
           <WaveformVisualizer isActive={isListening} />
         </div>
         
-        {/* Mic Status */}
         <div className="flex items-center justify-center gap-2 mb-3">
           {getMicStatusIcon()}
           <span className={cn(
@@ -381,7 +357,7 @@ export function FreeTalkFlow({ onBack, onComplete }: FreeTalkFlowProps) {
           <Button
             variant={isListening ? "record" : "hero"}
             size="icon-lg"
-            className="w-16 h-16 rounded-full"
+            className={cn("w-16 h-16 rounded-full", isListening && "animate-pulse-glow")}
             onClick={handleRecordToggle}
             disabled={!isSupported || micStatus === 'processing'}
           >

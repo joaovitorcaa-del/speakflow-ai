@@ -1,10 +1,13 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { ProgressBar } from "@/components/ProgressBar";
 import { WaveformVisualizer } from "@/components/WaveformVisualizer";
+import { ConfettiEffect } from "@/components/ConfettiEffect";
+import { AnalysisAnimation } from "@/components/AnalysisAnimation";
 import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
 import { useProfile } from "@/hooks/useProfile";
+import { useAuth } from "@/hooks/useAuth";
 import { 
   ArrowLeft, 
   Play, 
@@ -18,7 +21,7 @@ import {
   Loader2,
   AlertCircle,
   Quote,
-  RefreshCw
+  CheckCircle2
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
@@ -27,7 +30,15 @@ type ChallengeStep = "input" | "shadowing" | "output" | "feedback" | "complete";
 
 interface ChallengeFlowProps {
   onBack: () => void;
-  onComplete: () => void;
+  onComplete: (speakingMinutes: number, completionPercentage: number) => void;
+  isFixation?: boolean;
+  resumeSession?: {
+    current_step: string;
+    current_index: number;
+    transcriptions: string[];
+    speaking_seconds: number;
+    steps_completed: StepsCompleted;
+  } | null;
 }
 
 interface SpeechEvaluation {
@@ -52,93 +63,144 @@ interface ShadowingFeedback {
   accuracy: number;
 }
 
-export function ChallengeFlow({ onBack, onComplete }: ChallengeFlowProps) {
-  const { profile } = useProfile();
-  const [step, setStep] = useState<ChallengeStep>("input");
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
-  const [isRecording, setIsRecording] = useState(false);
-  const [shadowingIndex, setShadowingIndex] = useState(0);
-  const [outputIndex, setOutputIndex] = useState(0);
-  const [allTranscriptions, setAllTranscriptions] = useState<string[]>([]);
-  const [shadowingFeedback, setShadowingFeedback] = useState<ShadowingFeedback | null>(null);
-  const [evaluation, setEvaluation] = useState<SpeechEvaluation | null>(null);
-  const [isEvaluating, setIsEvaluating] = useState(false);
-  const [speakingDuration, setSpeakingDuration] = useState(0);
-  const recordingStartRef = useRef<number>(0);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
-  const audioCache = useRef<Map<string, string>>(new Map());
+interface OutputFeedback {
+  suggestion: string;
+  correction: string | null;
+}
 
-  // Get goal-based content
-  const goalThemes: Record<string, { title: string; inputText: string; questions: string[] }> = {
-    work: {
-      title: "Descrevendo seu trabalho",
-      inputText: `I've been working at this company for about three years now. My main responsibilities include managing the marketing team and overseeing our digital campaigns. 
-      
+interface StepsCompleted {
+  inputListened: boolean;
+  shadowingRecorded: boolean[];
+  outputRecorded: boolean[];
+}
+
+const goalThemes: Record<string, { title: string; inputText: string; shadowingSentences: string[]; questions: string[] }> = {
+  work: {
+    title: "Descrevendo seu trabalho",
+    inputText: `I've been working at this company for about three years now. My main responsibilities include managing the marketing team and overseeing our digital campaigns. 
+    
 What I enjoy most is the creative problem-solving aspect of my job. Every day brings new challenges that keep me engaged and motivated. For example, last week we had to completely redesign our social media strategy because our target audience shifted.
 
 The most challenging part is probably balancing multiple projects at once. I usually have three or four campaigns running simultaneously, each with different deadlines and requirements. But I've learned to prioritize effectively and communicate clearly with my team.`,
-      questions: [
-        "Tell me about your current job or studies. What do you do on a typical day?",
-        "What's the most interesting project you've worked on recently?",
-        "What challenges do you face in your work? How do you handle them?",
-        "How do you stay motivated when things get difficult?"
-      ]
-    },
-    travel: {
-      title: "Planejando uma viagem",
-      inputText: `I'm planning a trip to Europe next summer. I've always wanted to visit Italy and France, especially the coastal areas. I'm thinking of spending about two weeks there.
+    shadowingSentences: [
+      "I've been working at this company for about three years now.",
+      "My main responsibilities include managing the marketing team.",
+      "What I enjoy most is the creative problem-solving aspect.",
+      "Every day brings new challenges that keep me engaged.",
+      "I've learned to prioritize effectively and communicate clearly.",
+    ],
+    questions: [
+      "Tell me about your current job or studies. What do you do on a typical day?",
+      "What's the most interesting project you've worked on recently?",
+      "What challenges do you face in your work? How do you handle them?",
+      "How do you stay motivated when things get difficult?"
+    ]
+  },
+  travel: {
+    title: "Planejando uma viagem",
+    inputText: `I'm planning a trip to Europe next summer. I've always wanted to visit Italy and France, especially the coastal areas. I'm thinking of spending about two weeks there.
 
 The tricky part is deciding between a guided tour or traveling independently. Tours are convenient but I prefer having flexibility to explore on my own. I usually research places online and make a rough itinerary, but I leave room for spontaneous adventures.
 
 One thing I've learned is to pack light. On my last trip, I brought too many clothes and it was a hassle. Now I stick to versatile pieces that I can mix and match.`,
-      questions: [
-        "Tell me about a place you'd love to visit. Why does it interest you?",
-        "Describe your last trip. What did you enjoy most?",
-        "Do you prefer guided tours or traveling independently? Why?",
-        "What's your best travel tip for other travelers?"
-      ]
-    },
-    conversation: {
-      title: "Conversação do dia a dia",
-      inputText: `I had a really interesting weekend. On Saturday, I met up with some old friends for brunch at this new café downtown. The food was amazing - I had avocado toast with poached eggs.
+    shadowingSentences: [
+      "I'm planning a trip to Europe next summer.",
+      "I've always wanted to visit Italy and France.",
+      "Tours are convenient but I prefer having flexibility.",
+      "I usually research places online and make a rough itinerary.",
+      "One thing I've learned is to pack light.",
+    ],
+    questions: [
+      "Tell me about a place you'd love to visit. Why does it interest you?",
+      "Describe your last trip. What did you enjoy most?",
+      "Do you prefer guided tours or traveling independently? Why?",
+      "What's your best travel tip for other travelers?"
+    ]
+  },
+  conversation: {
+    title: "Conversação do dia a dia",
+    inputText: `I had a really interesting weekend. On Saturday, I met up with some old friends for brunch at this new café downtown. The food was amazing - I had avocado toast with poached eggs.
 
 After that, we walked around the neighborhood and did some window shopping. There's this vintage bookstore that I always love visiting. I ended up buying a classic novel I've been meaning to read.
 
 Sunday was more relaxed. I stayed home, did some cleaning, and watched a documentary about ocean life. It was really fascinating to learn about deep sea creatures.`,
-      questions: [
-        "What do you usually do on weekends? Tell me about your routine.",
-        "Do you have any hobbies? What do you enjoy doing in your free time?",
-        "Tell me about someone important in your life. Why are they special?",
-        "What's something new you've learned recently?"
-      ]
-    },
-    study: {
-      title: "Vida acadêmica",
-      inputText: `I'm currently in my second year of university, studying computer science. It's challenging but really rewarding. My favorite subjects are algorithms and artificial intelligence.
+    shadowingSentences: [
+      "I had a really interesting weekend.",
+      "I met up with some old friends for brunch.",
+      "There's this vintage bookstore that I always love visiting.",
+      "Sunday was more relaxed and I stayed home.",
+      "It was really fascinating to learn about deep sea creatures.",
+    ],
+    questions: [
+      "What do you usually do on weekends? Tell me about your routine.",
+      "Do you have any hobbies? What do you enjoy doing in your free time?",
+      "Tell me about someone important in your life. Why are they special?",
+      "What's something new you've learned recently?"
+    ]
+  },
+  study: {
+    title: "Vida acadêmica",
+    inputText: `I'm currently in my second year of university, studying computer science. It's challenging but really rewarding. My favorite subjects are algorithms and artificial intelligence.
 
 What I find most interesting is how technology is changing so rapidly. Last semester, I worked on a project using machine learning to analyze data. It was my first hands-on experience with AI and I learned a lot.
 
 Balancing studies with other activities can be tough. I try to manage my time by using a planner and setting specific study hours. It doesn't always work perfectly, but it helps me stay organized.`,
-      questions: [
-        "What are you studying or what did you study? Why did you choose it?",
-        "Tell me about a memorable learning experience you've had.",
-        "How do you manage your time between studies and other activities?",
-        "What are your academic or career goals?"
-      ]
-    }
-  };
+    shadowingSentences: [
+      "I'm currently in my second year of university.",
+      "My favorite subjects are algorithms and artificial intelligence.",
+      "What I find most interesting is how technology is changing.",
+      "Last semester I worked on a project using machine learning.",
+      "I try to manage my time by using a planner.",
+    ],
+    questions: [
+      "What are you studying or what did you study? Why did you choose it?",
+      "Tell me about a memorable learning experience you've had.",
+      "How do you manage your time between studies and other activities?",
+      "What are your academic or career goals?"
+    ]
+  }
+};
+
+export function ChallengeFlow({ onBack, onComplete, isFixation = false, resumeSession }: ChallengeFlowProps) {
+  const { profile } = useProfile();
+  const { user } = useAuth();
 
   const currentGoal = profile?.goal || 'conversation';
   const themeContent = goalThemes[currentGoal] || goalThemes.conversation;
+  const shadowingSentences = themeContent.shadowingSentences;
 
-  const shadowingSentences = [
-    "I've been working on this for about three years now.",
-    "My main responsibilities include managing the team.",
-    "What I enjoy most is the creative problem-solving aspect.",
-    "Every day brings new challenges that keep me engaged.",
-    "I've learned to prioritize effectively and communicate clearly.",
-  ];
+  // State - possibly resumed
+  const [step, setStep] = useState<ChallengeStep>((resumeSession?.current_step as ChallengeStep) || "input");
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [isRecording, setIsRecording] = useState(false);
+  const [shadowingIndex, setShadowingIndex] = useState(
+    resumeSession?.current_step === 'shadowing' ? (resumeSession?.current_index || 0) : 0
+  );
+  const [outputIndex, setOutputIndex] = useState(
+    resumeSession?.current_step === 'output' ? (resumeSession?.current_index || 0) : 0
+  );
+  const [allTranscriptions, setAllTranscriptions] = useState<string[]>(resumeSession?.transcriptions || []);
+  const [shadowingFeedback, setShadowingFeedback] = useState<ShadowingFeedback | null>(null);
+  const [evaluation, setEvaluation] = useState<SpeechEvaluation | null>(null);
+  const [isEvaluating, setIsEvaluating] = useState(false);
+  const [showAnalysisAnimation, setShowAnalysisAnimation] = useState(false);
+  const [speakingDuration, setSpeakingDuration] = useState(resumeSession?.speaking_seconds || 0);
+  const [audioConfirmed, setAudioConfirmed] = useState(false);
+  const [outputFeedback, setOutputFeedback] = useState<OutputFeedback | null>(null);
+  const [isGettingOutputFeedback, setIsGettingOutputFeedback] = useState(false);
+  const recordingStartRef = useRef<number>(0);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const audioCache = useRef<Map<string, string>>(new Map());
+
+  // Steps completed tracking
+  const [stepsCompleted, setStepsCompleted] = useState<StepsCompleted>(
+    resumeSession?.steps_completed || {
+      inputListened: false,
+      shadowingRecorded: new Array(shadowingSentences.length).fill(false),
+      outputRecorded: new Array(themeContent.questions.length).fill(false),
+    }
+  );
 
   const {
     transcript,
@@ -151,21 +213,58 @@ Balancing studies with other activities can be tough. I try to manage my time by
   } = useSpeechRecognition({
     language: 'en-US',
     continuous: true,
-    onPartialResult: (partial) => {
-      // Real-time update
-    }
   });
+
+  // Calculate completion percentage
+  const getCompletionPercentage = useCallback(() => {
+    const inputWeight = 1;
+    const shadowingWeight = shadowingSentences.length;
+    const outputWeight = themeContent.questions.length;
+    const total = inputWeight + shadowingWeight + outputWeight;
+
+    let completed = stepsCompleted.inputListened ? 1 : 0;
+    completed += stepsCompleted.shadowingRecorded.filter(Boolean).length;
+    completed += stepsCompleted.outputRecorded.filter(Boolean).length;
+
+    return Math.round((completed / total) * 100);
+  }, [stepsCompleted, shadowingSentences.length, themeContent.questions.length]);
 
   const getProgress = () => {
     switch (step) {
-      case "input": return 15;
-      case "shadowing": return 30 + (shadowingIndex / shadowingSentences.length) * 30;
-      case "output": return 60 + (outputIndex / themeContent.questions.length) * 30;
-      case "feedback": return 95;
+      case "input": return 10;
+      case "shadowing": return 20 + (shadowingIndex / shadowingSentences.length) * 30;
+      case "output": return 50 + (outputIndex / themeContent.questions.length) * 35;
+      case "feedback": return 90;
       case "complete": return 100;
       default: return 0;
     }
   };
+
+  // Save session to DB
+  const saveSession = useCallback(async () => {
+    if (!user || isFixation) return;
+    try {
+      const today = new Date().toISOString().split('T')[0];
+      const payload = {
+        user_id: user.id,
+        date: today,
+        current_step: step,
+        current_index: step === 'shadowing' ? shadowingIndex : step === 'output' ? outputIndex : 0,
+        transcriptions: JSON.parse(JSON.stringify(allTranscriptions)),
+        speaking_seconds: Math.round(speakingDuration),
+        steps_completed: JSON.parse(JSON.stringify(stepsCompleted)),
+        completed: step === 'complete',
+      };
+      await supabase.from('challenge_sessions').upsert(payload, { onConflict: 'user_id,date' });
+    } catch (err) {
+      console.error('[ChallengeFlow] Save session error:', err);
+    }
+  }, [user, isFixation, step, shadowingIndex, outputIndex, allTranscriptions, speakingDuration, stepsCompleted]);
+
+  // Auto-save on step/index change
+  useEffect(() => {
+    saveSession();
+  }, [step, shadowingIndex, outputIndex]);
 
   const playWithElevenLabs = async (text: string) => {
     const cachedUrl = audioCache.current.get(text);
@@ -185,10 +284,7 @@ Balancing studies with other activities can be tough. I try to manage my time by
             apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
             Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
           },
-          body: JSON.stringify({ 
-            text,
-            voiceId: "EXAVITQu4vr4xnSDxMaL"
-          }),
+          body: JSON.stringify({ text, voiceId: "EXAVITQu4vr4xnSDxMaL" }),
         }
       );
 
@@ -216,7 +312,12 @@ Balancing studies with other activities can be tough. I try to manage my time by
     
     audio.onloadeddata = () => setIsLoading(false);
     audio.onplay = () => setIsPlaying(true);
-    audio.onended = () => setIsPlaying(false);
+    audio.onended = () => {
+      setIsPlaying(false);
+      if (step === 'input') {
+        setStepsCompleted(prev => ({ ...prev, inputListened: true }));
+      }
+    };
     audio.onerror = () => {
       setIsPlaying(false);
       setIsLoading(false);
@@ -240,18 +341,12 @@ Balancing studies with other activities can be tough. I try to manage my time by
   };
 
   const playInputAudio = () => {
-    if (isPlaying) {
-      stopAudio();
-      return;
-    }
+    if (isPlaying) { stopAudio(); return; }
     playWithElevenLabs(themeContent.inputText);
   };
 
   const playShadowingSentence = () => {
-    if (isPlaying) {
-      stopAudio();
-      return;
-    }
+    if (isPlaying) { stopAudio(); return; }
     playWithElevenLabs(shadowingSentences[shadowingIndex]);
   };
 
@@ -265,11 +360,12 @@ Balancing studies with other activities can be tough. I try to manage my time by
   useEffect(() => {
     stopAudio();
     setShadowingFeedback(null);
-  }, [step, shadowingIndex]);
+    setAudioConfirmed(false);
+    setOutputFeedback(null);
+  }, [step, shadowingIndex, outputIndex]);
 
   const handleRecordToggle = async () => {
     if (isRecording || isListening) {
-      // Stop recording
       const finalText = stopListening();
       setIsRecording(false);
       
@@ -278,20 +374,38 @@ Balancing studies with other activities can be tough. I try to manage my time by
 
       if (finalText.trim()) {
         setAllTranscriptions(prev => [...prev, finalText.trim()]);
+        setAudioConfirmed(true);
         
-        // Get immediate feedback for shadowing
         if (step === "shadowing") {
+          setStepsCompleted(prev => {
+            const newShadowing = [...prev.shadowingRecorded];
+            newShadowing[shadowingIndex] = true;
+            return { ...prev, shadowingRecorded: newShadowing };
+          });
           getShadowingFeedback(finalText.trim(), shadowingSentences[shadowingIndex]);
         }
+
+        if (step === "output") {
+          setStepsCompleted(prev => {
+            const newOutput = [...prev.outputRecorded];
+            newOutput[outputIndex] = true;
+            return { ...prev, outputRecorded: newOutput };
+          });
+          getOutputFeedback(finalText.trim(), themeContent.questions[outputIndex]);
+        }
+      } else {
+        // Even if empty, treat accumulated text as valid
+        setAudioConfirmed(true);
       }
       resetTranscript();
     } else {
-      // Start recording
       recordingStartRef.current = Date.now();
       const started = await startListening();
       if (started) {
         setIsRecording(true);
         setShadowingFeedback(null);
+        setAudioConfirmed(false);
+        setOutputFeedback(null);
       }
     }
   };
@@ -299,23 +413,42 @@ Balancing studies with other activities can be tough. I try to manage my time by
   const getShadowingFeedback = async (userText: string, targetSentence: string) => {
     try {
       const { data, error } = await supabase.functions.invoke('shadowing-feedback', {
-        body: { 
-          userTranscription: userText,
-          targetSentence
-        }
+        body: { userTranscription: userText, targetSentence }
       });
-      
-      if (!error && data) {
-        setShadowingFeedback(data);
-      }
+      if (!error && data) setShadowingFeedback(data);
     } catch (err) {
       console.error("Error getting shadowing feedback:", err);
     }
   };
 
+  const getOutputFeedback = async (userText: string, question: string) => {
+    setIsGettingOutputFeedback(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('evaluate-speech', {
+        body: {
+          transcription: userText,
+          context: `Question: "${question}" | Theme: ${themeContent.title}`,
+          challengeType: 'output-phrase',
+          speakingDurationSeconds: 30
+        }
+      });
+      if (!error && data?.evaluation) {
+        setOutputFeedback({
+          suggestion: data.evaluation.naturalPhrase 
+            ? `✨ "${data.evaluation.naturalPhrase.improved}"` 
+            : data.evaluation.fluencyNote,
+          correction: data.evaluation.pronunciationTip || null,
+        });
+      }
+    } catch (err) {
+      console.error("Error getting output feedback:", err);
+    } finally {
+      setIsGettingOutputFeedback(false);
+    }
+  };
+
   const evaluateSpeech = async () => {
     setIsEvaluating(true);
-    
     const fullTranscription = allTranscriptions.join(' ');
     
     try {
@@ -331,7 +464,6 @@ Balancing studies with other activities can be tough. I try to manage my time by
       if (!error && data?.evaluation) {
         setEvaluation(data.evaluation);
       } else {
-        // Fallback
         setEvaluation({
           positiveReinforcement: "Ótimo trabalho! Você se expressou com clareza.",
           fluencyNote: "Continue praticando para desenvolver ainda mais sua fluência.",
@@ -368,6 +500,7 @@ Balancing studies with other activities can be tough. I try to manage my time by
       if (outputIndex < themeContent.questions.length - 1) {
         setOutputIndex(prev => prev + 1);
       } else {
+        setShowAnalysisAnimation(true);
         evaluateSpeech();
         setStep("feedback");
       }
@@ -376,10 +509,13 @@ Balancing studies with other activities can be tough. I try to manage my time by
     }
   };
 
+  const completionPct = getCompletionPercentage();
+  const canFinish = allTranscriptions.length > 0 && speakingDuration >= 10;
+
   return (
-    <div className="min-h-screen bg-background flex flex-col">
+    <div className="min-h-[100dvh] bg-background flex flex-col overflow-x-hidden">
       {/* Header */}
-      <div className="flex items-center gap-4 px-4 py-4 border-b">
+      <div className="flex items-center gap-4 px-4 py-4 border-b shrink-0">
         <Button variant="ghost" size="icon-sm" onClick={onBack}>
           <ArrowLeft className="w-5 h-5" />
         </Button>
@@ -391,7 +527,13 @@ Balancing studies with other activities can be tough. I try to manage my time by
         </span>
       </div>
 
-      <div className="flex-1 flex flex-col px-6 py-6">
+      {isFixation && (
+        <div className="bg-muted border-b border-border px-4 py-2 text-center text-xs text-muted-foreground shrink-0">
+          📖 Exercício de fixação — não será contabilizado
+        </div>
+      )}
+
+      <div className="flex-1 flex flex-col px-4 py-6 max-w-full overflow-x-hidden">
         {/* Input Block */}
         {step === "input" && (
           <div className="flex-1 flex flex-col animate-fade-in-up">
@@ -403,7 +545,7 @@ Balancing studies with other activities can be tough. I try to manage my time by
             </div>
             <h2 className="text-2xl font-bold mb-6">Ouça e entenda</h2>
 
-            <Card variant="gradient" padding="none" className="aspect-video mb-6 overflow-hidden">
+            <Card variant="gradient" padding="none" className="aspect-video mb-6 overflow-hidden max-w-full">
               <div className="w-full h-full bg-gradient-to-br from-secondary/20 to-secondary/5 flex items-center justify-center">
                 <Button 
                   variant="hero" 
@@ -451,12 +593,22 @@ Balancing studies with other activities can be tough. I try to manage my time by
             <h2 className="text-2xl font-bold mb-6">Repita a frase</h2>
 
             <Card variant="elevated" padding="lg" className="mb-4">
-              <p className="text-xl font-medium text-center leading-relaxed">
+              <p className="text-lg font-medium text-center leading-relaxed">
                 "{shadowingSentences[shadowingIndex]}"
               </p>
             </Card>
 
-            {/* Immediate Shadowing Feedback */}
+            {/* Audio confirmed */}
+            {audioConfirmed && !shadowingFeedback && (
+              <Card variant="default" padding="sm" className="mb-4 border-accent/30 bg-accent/5">
+                <div className="flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-accent" />
+                  <span className="text-sm font-medium text-accent">Áudio recebido ✓</span>
+                </div>
+              </Card>
+            )}
+
+            {/* Shadowing Feedback */}
             {shadowingFeedback && (
               <Card variant="default" padding="sm" className="mb-4 border-accent/30 bg-accent/5">
                 <div className="flex items-start gap-2">
@@ -471,7 +623,7 @@ Balancing studies with other activities can be tough. I try to manage my time by
               </Card>
             )}
 
-            {/* Live transcript while recording */}
+            {/* Live transcript */}
             {transcript && (
               <Card variant="default" padding="sm" className="mb-4 border-dashed border-primary/30">
                 <div className="flex items-center gap-2 mb-1">
@@ -484,7 +636,7 @@ Balancing studies with other activities can be tough. I try to manage my time by
 
             {/* Audio Controls */}
             <div className="flex justify-center gap-4 mb-6">
-              <Button variant="outline" size="icon-lg" onClick={() => setShadowingFeedback(null)}>
+              <Button variant="outline" size="icon-lg" onClick={() => { setShadowingFeedback(null); setAudioConfirmed(false); }}>
                 <RotateCcw className="w-6 h-6" />
               </Button>
               <Button 
@@ -503,12 +655,10 @@ Balancing studies with other activities can be tough. I try to manage my time by
               </Button>
             </div>
 
-            {/* Waveform */}
             <div className="mb-6">
               <WaveformVisualizer isActive={isRecording || isListening} />
             </div>
 
-            {/* Recording button */}
             <div className="flex flex-col items-center gap-3 mb-auto">
               <Button
                 variant={isRecording || isListening ? "record" : "soft"}
@@ -549,11 +699,47 @@ Balancing studies with other activities can be tough. I try to manage my time by
             </div>
             <h2 className="text-2xl font-bold mb-6">Agora é sua vez!</h2>
 
-            <Card variant="primary" padding="lg" className="mb-6">
+            <Card variant="primary" padding="lg" className="mb-6 max-w-full">
               <p className="text-lg font-medium text-center">
                 {themeContent.questions[outputIndex]}
               </p>
             </Card>
+
+            {/* Audio confirmed */}
+            {audioConfirmed && !outputFeedback && !isGettingOutputFeedback && (
+              <Card variant="default" padding="sm" className="mb-4 border-accent/30 bg-accent/5">
+                <div className="flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-accent" />
+                  <span className="text-sm font-medium text-accent">Áudio recebido ✓</span>
+                </div>
+              </Card>
+            )}
+
+            {/* Getting feedback */}
+            {isGettingOutputFeedback && (
+              <Card variant="default" padding="sm" className="mb-4 border-primary/30 bg-primary/5">
+                <div className="flex items-center gap-2">
+                  <Loader2 className="w-4 h-4 animate-spin text-primary" />
+                  <span className="text-sm text-muted-foreground">Analisando sua resposta...</span>
+                </div>
+              </Card>
+            )}
+
+            {/* Per-phrase output feedback */}
+            {outputFeedback && (
+              <Card variant="default" padding="sm" className="mb-4 border-accent/30 bg-accent/5">
+                <div className="flex items-start gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-accent mt-0.5" />
+                  <div>
+                    <p className="text-sm font-medium text-accent">Áudio recebido ✓</p>
+                    <p className="text-sm text-foreground mt-1">{outputFeedback.suggestion}</p>
+                    {outputFeedback.correction && (
+                      <p className="text-xs text-muted-foreground mt-1">💡 {outputFeedback.correction}</p>
+                    )}
+                  </div>
+                </div>
+              </Card>
+            )}
 
             {/* Live transcript */}
             {transcript && (
@@ -566,12 +752,10 @@ Balancing studies with other activities can be tough. I try to manage my time by
               </Card>
             )}
 
-            {/* Waveform */}
             <div className="mb-6">
               <WaveformVisualizer isActive={isRecording || isListening} />
             </div>
 
-            {/* Recording button */}
             <div className="flex flex-col items-center gap-3 mb-auto">
               <Button
                 variant={isRecording || isListening ? "record" : "hero"}
@@ -604,22 +788,22 @@ Balancing studies with other activities can be tough. I try to manage my time by
         {/* Feedback Block */}
         {step === "feedback" && (
           <div className="flex-1 flex flex-col animate-fade-in-up">
-            <h2 className="text-2xl font-bold mb-4 text-center">Seu feedback</h2>
-            
-            {/* AI Analysis Notice */}
-            <p className="text-xs text-muted-foreground text-center mb-4">
-              Cada resposta é analisada individualmente pela IA
-            </p>
-
-            {isEvaluating ? (
+            {showAnalysisAnimation && isEvaluating ? (
+              <AnalysisAnimation onComplete={() => setShowAnalysisAnimation(false)} />
+            ) : isEvaluating ? (
               <div className="flex-1 flex items-center justify-center">
                 <div className="text-center">
                   <Loader2 className="w-12 h-12 animate-spin text-primary mx-auto mb-4" />
-                  <p className="text-muted-foreground">Analisando sua fala...</p>
+                  <p className="text-muted-foreground">Finalizando análise...</p>
                 </div>
               </div>
             ) : evaluation ? (
               <>
+                <h2 className="text-2xl font-bold mb-4 text-center">Seu feedback</h2>
+                <p className="text-xs text-muted-foreground text-center mb-4">
+                  Baseado em {allTranscriptions.length} respostas analisadas
+                </p>
+
                 {/* Positive Reinforcement */}
                 <Card variant="success" padding="lg" className="mb-4">
                   <div className="flex items-center gap-3 mb-2">
@@ -645,13 +829,11 @@ Balancing studies with other activities can be tough. I try to manage my time by
                   </div>
                 </div>
 
-                {/* Fluency Note */}
                 <Card variant="default" padding="default" className="mb-3">
                   <h4 className="font-semibold mb-2 text-primary">🎯 Fluência</h4>
                   <p className="text-sm text-muted-foreground">{evaluation.fluencyNote}</p>
                 </Card>
 
-                {/* Pronunciation Tip */}
                 {evaluation.pronunciationTip && (
                   <Card variant="default" padding="default" className="mb-3">
                     <h4 className="font-semibold mb-2 text-accent">🗣️ Pronúncia</h4>
@@ -659,7 +841,6 @@ Balancing studies with other activities can be tough. I try to manage my time by
                   </Card>
                 )}
 
-                {/* Natural Phrase Suggestion */}
                 {evaluation.naturalPhrase && (
                   <Card variant="elevated" padding="default" className="mb-auto">
                     <h4 className="font-semibold mb-3 flex items-center gap-2">
@@ -682,35 +863,65 @@ Balancing studies with other activities can be tough. I try to manage my time by
                     <p className="text-sm text-muted-foreground">{evaluation.encouragement}</p>
                   </Card>
                 )}
+
+                {canFinish ? (
+                  <Button variant="hero" size="xl" className="mt-6" onClick={handleNextStep}>
+                    Finalizar desafio
+                    <Check className="w-5 h-5" />
+                  </Button>
+                ) : (
+                  <div className="mt-6 space-y-3">
+                    <p className="text-sm text-muted-foreground text-center">
+                      ⚠️ Desafio incompleto — grave mais respostas
+                    </p>
+                    <Button variant="outline" size="xl" className="w-full" onClick={() => {
+                      // Go back to first incomplete output
+                      const firstIncomplete = stepsCompleted.outputRecorded.findIndex(v => !v);
+                      if (firstIncomplete >= 0) {
+                        setOutputIndex(firstIncomplete);
+                        setStep("output");
+                      } else {
+                        const firstShadowing = stepsCompleted.shadowingRecorded.findIndex(v => !v);
+                        if (firstShadowing >= 0) {
+                          setShadowingIndex(firstShadowing);
+                          setStep("shadowing");
+                        }
+                      }
+                    }}>
+                      Retomar desafio
+                    </Button>
+                  </div>
+                )}
               </>
             ) : null}
-
-            <Button variant="hero" size="xl" className="mt-6" onClick={handleNextStep}>
-              Finalizar desafio
-              <Check className="w-5 h-5" />
-            </Button>
           </div>
         )}
 
         {/* Complete */}
         {step === "complete" && (
           <div className="flex-1 flex flex-col items-center justify-center text-center animate-scale-in">
+            <ConfettiEffect />
             <div className="w-24 h-24 rounded-full bg-accent flex items-center justify-center mb-6 shadow-card">
               <Check className="w-12 h-12 text-accent-foreground" />
             </div>
-            <h2 className="text-3xl font-bold mb-2">Parabéns! 🎉</h2>
-            <p className="text-muted-foreground mb-8">
-              Você completou o desafio de hoje.
+            <h2 className="text-3xl font-bold mb-2">
+              {isFixation ? "Fixação Completa! 📖" : "Parabéns! 🎉"}
+            </h2>
+            <p className="text-muted-foreground mb-2">
+              {isFixation ? "Excelente revisão!" : "Você completou o desafio de hoje."}
+            </p>
+            <p className="text-sm text-muted-foreground mb-8">
+              Conclusão: {completionPct}%
             </p>
 
             <div className="grid grid-cols-3 gap-4 w-full max-w-sm mb-8">
               <div className="text-center">
-                <p className="text-2xl font-bold text-primary">{Math.round(speakingDuration / 60)}min</p>
+                <p className="text-2xl font-bold text-primary">{Math.max(1, Math.round(speakingDuration / 60))}min</p>
                 <p className="text-xs text-muted-foreground">Falando</p>
               </div>
               <div className="text-center">
-                <p className="text-2xl font-bold text-accent">{shadowingSentences.length}</p>
-                <p className="text-xs text-muted-foreground">Frases</p>
+                <p className="text-2xl font-bold text-accent">{allTranscriptions.length}</p>
+                <p className="text-xs text-muted-foreground">Respostas</p>
               </div>
               <div className="text-center">
                 <p className="text-2xl font-bold text-streak-fire">{evaluation?.scores.fluency || 70}%</p>
@@ -718,7 +929,10 @@ Balancing studies with other activities can be tough. I try to manage my time by
               </div>
             </div>
 
-            <Button variant="hero" size="xl" className="w-full max-w-sm" onClick={onComplete}>
+            <Button variant="hero" size="xl" className="w-full max-w-sm" onClick={() => {
+              const minutes = Math.max(1, Math.round(speakingDuration / 60));
+              onComplete(minutes, completionPct);
+            }}>
               Voltar ao início
             </Button>
           </div>

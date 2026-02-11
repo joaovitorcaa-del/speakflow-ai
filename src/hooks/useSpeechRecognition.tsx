@@ -37,7 +37,7 @@ export function useSpeechRecognition({
   const accumulatedRef = useRef('');
   const isActiveRef = useRef(false);
   const restartCountRef = useRef(0);
-  const maxRestarts = 3;
+  const maxRestarts = 8;
 
   const isSupported = typeof window !== 'undefined' && 
     ('SpeechRecognition' in window || 'webkitSpeechRecognition' in window);
