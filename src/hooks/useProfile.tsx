@@ -50,6 +50,23 @@ export function useProfile() {
     setLoading(false);
   };
 
+  const createProfile = async (displayName?: string) => {
+    if (!user) return { error: new Error('Not authenticated') };
+
+    const { error } = await supabase
+      .from('profiles')
+      .upsert({
+        user_id: user.id,
+        display_name: displayName || user.user_metadata?.display_name || user.email?.split('@')[0] || 'User',
+      }, { onConflict: 'user_id' });
+
+    if (!error) {
+      await fetchProfile();
+    }
+
+    return { error };
+  };
+
   const updateProfile = async (updates: Partial<Profile>) => {
     if (!user) return { error: new Error('Not authenticated') };
 
@@ -65,5 +82,5 @@ export function useProfile() {
     return { error };
   };
 
-  return { profile, loading, updateProfile, refetch: fetchProfile };
+  return { profile, loading, updateProfile, createProfile, refetch: fetchProfile };
 }
