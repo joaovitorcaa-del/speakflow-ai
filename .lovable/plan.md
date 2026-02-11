@@ -1,81 +1,45 @@
 
-# Correcao do Microfone no iPhone (iOS Safari)
+# Correcao: Microfone FreeTalk desativa sozinho no iOS
 
-## Problemas Identificados
+## Causa Raiz
 
-### Problema 1: Shadowing nao transcreve no iOS
-No iOS Safari, o modo `continuous = false` da Web Speech API frequentemente entrega o resultado final (`isFinal = true`) apenas no evento `onend`, e nao antes do `stop()` ser chamado. Quando `stopListening()` e invocado, `accumulatedRef` ainda esta vazio. O codigo trata isso como "audio confirmado sem texto", setando `audioConfirmed = true` mas nunca chamando `getShadowingFeedback`.
+O hook `useSpeechRecognition` tem um `useEffect` (linha 185) que depende de `initRecognition`. Por sua vez, `initRecognition` depende de `onResult`, `onError` e `onPartialResult` — callbacks passados como props que sao funcoes novas a cada render.
 
-### Problema 2: FreeTalk microfone desativa sozinho no iOS
-O fluxo atual chama `getUserMedia()` para verificar permissao e imediatamente encerra o stream, seguido por `recognition.start()`. No iOS Safari, liberar um stream de audio e iniciar outro (SpeechRecognition) em sequencia rapida causa conflito — o iOS so permite uma captura de audio por vez. O reconhecimento inicia e encerra imediatamente.
+Fluxo do bug:
+```text
+1. Usuario clica no mic → startListening() → seta micStatus = 'listening'
+2. Componente re-renderiza (novo micStatus)
+3. Nova funcao onError criada → initRecognition muda → useEffect cleanup executa
+4. Cleanup chama recognitionRef.current.abort() → microfone desliga
+5. useEffect re-executa, cria nova instancia (mas nao inicia)
+6. Resultado: mic liga e desliga no mesmo segundo
+```
+
+O Shadowing funciona porque o fluxo de re-renders e menos frequente no momento critico de gravacao.
 
 ## Solucao
 
-### 1. Remover `getUserMedia` pre-check no `useSpeechRecognition`
+Usar refs para os callbacks (`onResult`, `onError`, `onPartialResult`) ao inves de inclui-los diretamente nas dependencias do `useCallback`. Isso torna `initRecognition` estavel entre renders, evitando que o `useEffect` re-execute e aborte o reconhecimento.
 
-**Arquivo: `src/hooks/useSpeechRecognition.tsx`**
+### Mudancas em `src/hooks/useSpeechRecognition.tsx`
 
-- Remover a funcao `requestMicrophoneAccess` que chama `getUserMedia` antes de iniciar o reconhecimento
-- Em `startListening`, pular o pre-check de permissao e iniciar `recognition.start()` diretamente
-- A propria Web Speech API ja solicita permissao de microfone ao usuario quando necessario
-- Se ocorrer erro `not-allowed`, o handler de erro ja trata isso corretamente
-- Isso elimina o conflito de captura dupla de audio no iOS
+1. **Adicionar 3 refs para callbacks**:
+   - `onResultRef = useRef(onResult)`
+   - `onErrorRef = useRef(onError)` 
+   - `onPartialResultRef = useRef(onPartialResult)`
 
-### 2. Capturar transcript no `onend` para iOS
+2. **Manter refs atualizadas** com um `useEffect` separado que sincroniza os valores a cada render (sem deps pesadas).
 
-**Arquivo: `src/hooks/useSpeechRecognition.tsx`**
+3. **Dentro de `initRecognition`**: substituir chamadas diretas a `onResult`, `onError`, `onPartialResult` por chamadas via ref (`onResultRef.current?.(...)`).
 
-- No handler `onend`, quando `isActiveRef.current` e `false` (ou seja, o usuario pediu para parar), verificar se `accumulatedRef` esta vazio
-- Se vazio, usar o ultimo `interimTranscript` disponivel como fallback (salvar em uma ref separada `lastInterimRef`)
-- Adicionar um pequeno delay (300ms) antes de chamar `stop()` no `stopListening` para dar tempo ao iOS de entregar o resultado final
-- Alterar `stopListening` para retornar via Promise ou usar o callback `onResult` de forma mais confiavel
+4. **Remover callbacks das dependencias** de `initRecognition` e `stopListening`, deixando apenas `isSupported`, `continuous`, `language`.
 
-### 3. Refatorar `stopListening` com delay para iOS
+5. **Simplificar o `useEffect` de inicializacao** (linha 185): como `initRecognition` agora e estavel, ele nao re-executa a cada render, eliminando o abort indevido.
 
-**Arquivo: `src/hooks/useSpeechRecognition.tsx`**
-
-Mudanca principal em `stopListening`:
-- Ao inves de chamar `recognition.stop()` e retornar imediatamente, aguardar um curto periodo (300ms) para que o iOS processe o resultado final
-- Usar uma Promise que resolve com o texto final apos o delay
-- Manter `lastInterimRef` como fallback caso o resultado final nao chegue
-
-### 4. Ajustar ChallengeFlow para lidar com transcript assincrono
-
-**Arquivo: `src/components/ChallengeFlow.tsx`**
-
-- `handleRecordToggle`: como `stopListening` passara a ser async (retornando Promise), ajustar o `await`
-- Usar o `transcript` state como fallback se `stopListening` retornar vazio
-- Garantir que `getShadowingFeedback` seja chamado mesmo quando o texto vem do fallback
-
-### 5. Ajustar FreeTalkFlow para o mesmo padrao
-
-**Arquivo: `src/components/FreeTalkFlow.tsx`**
-
-- `handleRecordToggle`: mesma logica — usar `transcript` como fallback se `stopListening` retornar vazio
-- `handleSendTranscript`: ajustar para o novo formato async
-
-## Mudancas Detalhadas no Hook
-
-```text
-useSpeechRecognition.tsx:
-
-1. Nova ref: lastInterimRef = useRef('')
-2. Em onresult: salvar interimTranscript em lastInterimRef
-3. Remover requestMicrophoneAccess (getUserMedia)
-4. startListening: remover chamada a requestMicrophoneAccess, ir direto para recognition.start()
-5. stopListening: 
-   - Setar isActiveRef = false
-   - Chamar recognition.stop()
-   - Esperar 300ms
-   - Retornar accumulatedRef || lastInterimRef como fallback
-   - Retornar Promise<string> ao inves de string
-6. onend: se !isActiveRef e accumulatedRef vazio, usar lastInterimRef
-```
-
-## Arquivos Modificados
+### Arquivo modificado
 
 | Arquivo | Mudanca |
 |---------|---------|
-| `src/hooks/useSpeechRecognition.tsx` | Remover getUserMedia pre-check, adicionar lastInterimRef fallback, tornar stopListening async com delay |
-| `src/components/ChallengeFlow.tsx` | Ajustar handleRecordToggle para await stopListening e usar transcript como fallback |
-| `src/components/FreeTalkFlow.tsx` | Ajustar handleRecordToggle e handleSendTranscript para await stopListening e usar transcript como fallback |
+| `src/hooks/useSpeechRecognition.tsx` | Estabilizar callbacks via refs para evitar re-criacao de recognition a cada render |
+
+Nenhuma mudanca necessaria em `FreeTalkFlow.tsx` ou `ChallengeFlow.tsx` — o problema esta inteiramente no hook.
