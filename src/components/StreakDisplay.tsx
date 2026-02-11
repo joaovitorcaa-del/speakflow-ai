@@ -5,9 +5,10 @@ interface StreakDisplayProps {
   currentStreak: number;
   weekProgress: boolean[]; // 7 days, true = completed
   className?: string;
+  onWeekClick?: () => void;
 }
 
-export function StreakDisplay({ currentStreak, weekProgress, className }: StreakDisplayProps) {
+export function StreakDisplay({ currentStreak, weekProgress, className, onWeekClick }: StreakDisplayProps) {
   const days = ["S", "M", "T", "W", "T", "F", "S"];
   
   return (
@@ -26,7 +27,7 @@ export function StreakDisplay({ currentStreak, weekProgress, className }: Streak
       </div>
       
       {/* Week progress */}
-      <div className="flex gap-1.5">
+      <button onClick={onWeekClick} className="flex gap-1.5 cursor-pointer hover:opacity-80 transition-opacity">
         {weekProgress.map((completed, index) => (
           <div
             key={index}
@@ -44,7 +45,7 @@ export function StreakDisplay({ currentStreak, weekProgress, className }: Streak
             )}
           </div>
         ))}
-      </div>
+      </button>
     </div>
   );
 }

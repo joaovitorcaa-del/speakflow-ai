@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardTitle, CardDescription } from "@/components/ui/card";
 import { StreakDisplay } from "@/components/StreakDisplay";
@@ -6,6 +7,7 @@ import { WeeklyStatusCard } from "@/components/WeeklyStatusCard";
 import { FreeTalkCard } from "@/components/FreeTalkCard";
 import { MetricCard } from "@/components/MetricCard";
 import { VocabularyCard } from "@/components/VocabularyCard";
+import { CalendarHistoryModal } from "@/components/CalendarHistoryModal";
 import { useAuth } from "@/hooks/useAuth";
 import { useWeeklyStats } from "@/hooks/useWeeklyStats";
 import { useOfflineCache } from "@/hooks/useOfflineCache";
@@ -65,6 +67,7 @@ export function HomeScreen({
   const { stats } = useWeeklyStats();
   const { isOnline, syncAndCache } = useOfflineCache();
   const navigate = useNavigate();
+  const [showCalendar, setShowCalendar] = useState(false);
   
   useEffect(() => {
     if (isOnline) {
@@ -127,8 +130,11 @@ export function HomeScreen({
           currentStreak={currentStreak} 
           weekProgress={weekProgress}
           className="justify-center"
+          onWeekClick={() => setShowCalendar(true)}
         />
       </div>
+
+      <CalendarHistoryModal open={showCalendar} onOpenChange={setShowCalendar} />
 
       <div className="px-4 -mt-4 max-w-full">
         {/* Main Challenge Card */}
