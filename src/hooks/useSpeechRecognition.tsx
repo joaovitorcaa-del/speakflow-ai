@@ -31,6 +31,18 @@ export function useSpeechRecognition({
   const [permissionStatus, setPermissionStatus] = useState<'granted' | 'denied' | 'prompt' | 'unknown'>('unknown');
   const [error, setError] = useState<string | null>(null);
   
+  // Stable refs for callbacks to avoid re-creating recognition on every render
+  const onResultRef = useRef(onResult);
+  const onErrorRef = useRef(onError);
+  const onPartialResultRef = useRef(onPartialResult);
+
+  // Keep refs in sync
+  useEffect(() => {
+    onResultRef.current = onResult;
+    onErrorRef.current = onError;
+    onPartialResultRef.current = onPartialResult;
+  });
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const recognitionRef = useRef<any>(null);
   const finalTranscriptRef = useRef('');
@@ -110,7 +122,7 @@ export function useSpeechRecognition({
 
       const currentTranscript = (accumulatedRef.current + interimTranscript).trim();
       setTranscript(currentTranscript);
-      onPartialResult?.(currentTranscript);
+      onPartialResultRef.current?.(currentTranscript);
     };
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -120,7 +132,7 @@ export function useSpeechRecognition({
       if (event.error === 'not-allowed') {
         setPermissionStatus('denied');
         setError('Microphone permission denied');
-        onError?.('Microphone permission denied');
+        onErrorRef.current?.('Microphone permission denied');
         isActiveRef.current = false;
         setIsListening(false);
       } else if (event.error === 'no-speech') {
@@ -141,7 +153,7 @@ export function useSpeechRecognition({
         setIsListening(false);
       } else {
         setError(`Speech recognition error: ${event.error}`);
-        onError?.(event.error);
+        onErrorRef.current?.(event.error);
       }
     };
 
@@ -173,13 +185,13 @@ export function useSpeechRecognition({
         }
         const finalText = accumulatedRef.current.trim();
         if (finalText && !isActiveRef.current) {
-          onResult?.(finalText);
+          onResultRef.current?.(finalText);
         }
       }
     };
 
     return recognition;
-  }, [isSupported, continuous, language, onResult, onError, onPartialResult]);
+  }, [isSupported, continuous, language]);
 
   // Initialize on mount
   useEffect(() => {
@@ -201,7 +213,7 @@ export function useSpeechRecognition({
   const startListening = useCallback(async (): Promise<boolean> => {
     if (!isSupported) {
       setError('Speech recognition not supported');
-      onError?.('Speech recognition not supported');
+      onErrorRef.current?.('Speech recognition not supported');
       return false;
     }
 
@@ -231,10 +243,10 @@ export function useSpeechRecognition({
       console.error('[SpeechRecognition] Start error:', err);
       isActiveRef.current = false;
       setError('Failed to start speech recognition');
-      onError?.('Failed to start speech recognition');
+      onErrorRef.current?.('Failed to start speech recognition');
       return false;
     }
-  }, [isSupported, initRecognition, onError]);
+  }, [isSupported, initRecognition]);
 
   const stopListening = useCallback(async (): Promise<string> => {
     console.log('[SpeechRecognition] Stop requested');
@@ -261,11 +273,11 @@ export function useSpeechRecognition({
     }
     
     if (finalText) {
-      onResult?.(finalText);
+      onResultRef.current?.(finalText);
     }
     
     return finalText;
-  }, [onResult]);
+  }, []);
 
   const resetTranscript = useCallback(() => {
     setTranscript('');
