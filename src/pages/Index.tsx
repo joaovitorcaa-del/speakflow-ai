@@ -13,10 +13,15 @@ type AppView = "loading" | "onboarding" | "home" | "challenge" | "freetalk" | "j
 
 const Index = () => {
   const { user } = useAuth();
-  const { profile, loading: profileLoading, updateProfile, createProfile } = useProfile();
+  const { profile, loading: profileLoading, updateProfile, createProfile, refetch: refetchProfile } = useProfile();
   const [view, setView] = useState<AppView>("loading");
   const [weekProgress, setWeekProgress] = useState<boolean[]>([false, false, false, false, false, false, false]);
   const [creatingProfile, setCreatingProfile] = useState(false);
+  const [todayChallengeCompleted, setTodayChallengeCompleted] = useState(false);
+  const [todayChallengePercentage, setTodayChallengePercentage] = useState(0);
+  const [todaySpeakingMinutes, setTodaySpeakingMinutes] = useState(0);
+  const [isFixation, setIsFixation] = useState(false);
+  const [resumeSession, setResumeSession] = useState<any>(null);
 
   useEffect(() => {
     if (profileLoading) {
@@ -28,29 +33,76 @@ const Index = () => {
       if (profile.goal && profile.level) {
         setView("home");
         fetchWeekProgress();
+        fetchTodayStatus();
       } else {
         setView("onboarding");
       }
     } else if (user && !creatingProfile) {
-      // User authenticated but no profile — auto-create one
       setCreatingProfile(true);
       createProfile().finally(() => setCreatingProfile(false));
     }
   }, [profile, profileLoading, user]);
 
+  const fetchTodayStatus = async () => {
+    if (!user) return;
+    const today = new Date().toISOString().split('T')[0];
+
+    // Check daily_progress
+    const { data: progress } = await supabase
+      .from('daily_progress')
+      .select('challenge_completed, speaking_minutes')
+      .eq('user_id', user.id)
+      .eq('date', today)
+      .single();
+
+    if (progress) {
+      setTodayChallengeCompleted(progress.challenge_completed || false);
+      setTodaySpeakingMinutes(progress.speaking_minutes || 0);
+    } else {
+      setTodayChallengeCompleted(false);
+      setTodaySpeakingMinutes(0);
+    }
+
+    // Check challenge_sessions for partial progress  
+    try {
+      const { data: session } = await supabase
+        .from('challenge_sessions')
+        .select('*')
+        .eq('user_id', user.id)
+        .eq('date', today)
+        .maybeSingle();
+
+      if (session && !session.completed) {
+        const stepsCompleted = session.steps_completed as any;
+        if (stepsCompleted) {
+          const inputDone = stepsCompleted.inputListened ? 1 : 0;
+          const shadowingDone = (stepsCompleted.shadowingRecorded || []).filter(Boolean).length;
+          const outputDone = (stepsCompleted.outputRecorded || []).filter(Boolean).length;
+          const total = 1 + 5 + 4;
+          const pct = Math.round(((inputDone + shadowingDone + outputDone) / total) * 100);
+          setTodayChallengePercentage(pct);
+        }
+        setResumeSession(session);
+      } else {
+        setTodayChallengePercentage(0);
+        setResumeSession(null);
+      }
+    } catch {
+      // Table may not be available yet
+      setTodayChallengePercentage(0);
+      setResumeSession(null);
+    }
+  };
+
   const fetchWeekProgress = async () => {
     if (!user) return;
 
-    // Use local timezone for accurate day calculation
     const today = new Date();
-    const currentDayOfWeek = today.getDay(); // 0 = Sunday, 6 = Saturday
-    
-    // Calculate start of week (Sunday) in local time
+    const currentDayOfWeek = today.getDay();
     const startOfWeek = new Date(today);
     startOfWeek.setDate(today.getDate() - currentDayOfWeek);
     startOfWeek.setHours(0, 0, 0, 0);
     
-    // Format dates as YYYY-MM-DD in local timezone
     const formatLocalDate = (date: Date) => {
       const year = date.getFullYear();
       const month = String(date.getMonth() + 1).padStart(2, '0');
@@ -74,7 +126,6 @@ const Index = () => {
     if (data) {
       const progress = [false, false, false, false, false, false, false];
       data.forEach(day => {
-        // Parse date string directly without timezone conversion
         const [year, month, dayNum] = day.date.split('-').map(Number);
         const dayDate = new Date(year, month - 1, dayNum);
         const dayIndex = dayDate.getDay();
@@ -94,7 +145,8 @@ const Index = () => {
     setView("home");
   };
 
-  const handleStartChallenge = () => {
+  const handleStartChallenge = (fixation?: boolean) => {
+    setIsFixation(fixation || false);
     setView("challenge");
   };
 
@@ -105,10 +157,8 @@ const Index = () => {
   const handleFreeTalkComplete = async (minutesSpoken: number) => {
     if (!user) return;
 
-    // Record speaking minutes from free talk
     const today = new Date().toISOString().split('T')[0];
     
-    // Get existing progress for today
     const { data: existing } = await supabase
       .from('daily_progress')
       .select('speaking_minutes')
@@ -127,33 +177,51 @@ const Index = () => {
     });
 
     await fetchWeekProgress();
+    await fetchTodayStatus();
     setView("home");
   };
 
-  const handleChallengeComplete = async () => {
+  const handleChallengeComplete = async (speakingMinutes: number, completionPercentage: number) => {
     if (!user) return;
 
-    // Record daily progress
     const today = new Date().toISOString().split('T')[0];
-    
-    await supabase.from('daily_progress').upsert({
-      user_id: user.id,
-      date: today,
-      challenge_completed: true,
-      speaking_minutes: 20
-    }, {
-      onConflict: 'user_id,date'
-    });
+    const challengeCompleted = completionPercentage >= 80;
 
-    // Update streak
-    await supabase.rpc('update_user_streak', { p_user_id: user.id });
+    if (!isFixation) {
+      // Get existing speaking minutes to add to them
+      const { data: existing } = await supabase
+        .from('daily_progress')
+        .select('speaking_minutes')
+        .eq('user_id', user.id)
+        .eq('date', today)
+        .single();
+
+      const currentMinutes = existing?.speaking_minutes || 0;
+
+      await supabase.from('daily_progress').upsert({
+        user_id: user.id,
+        date: today,
+        challenge_completed: challengeCompleted,
+        speaking_minutes: currentMinutes + speakingMinutes
+      }, {
+        onConflict: 'user_id,date'
+      });
+
+      if (challengeCompleted) {
+        await supabase.rpc('update_user_streak', { p_user_id: user.id });
+      }
+    }
 
     // Refresh data
+    await refetchProfile();
     await fetchWeekProgress();
+    await fetchTodayStatus();
     setView("home");
   };
 
   const handleChallengeBack = () => {
+    // Save session is handled inside ChallengeFlow
+    fetchTodayStatus();
     setView("home");
   };
 
@@ -174,6 +242,14 @@ const Index = () => {
       <ChallengeFlow 
         onBack={handleChallengeBack}
         onComplete={handleChallengeComplete}
+        isFixation={isFixation}
+        resumeSession={!isFixation && resumeSession && !resumeSession.completed ? {
+          current_step: resumeSession.current_step,
+          current_index: resumeSession.current_index,
+          transcriptions: resumeSession.transcriptions || [],
+          speaking_seconds: resumeSession.speaking_seconds || 0,
+          steps_completed: resumeSession.steps_completed || {},
+        } : null}
       />
     );
   }
@@ -181,7 +257,7 @@ const Index = () => {
   if (view === "freetalk") {
     return (
       <FreeTalkFlow 
-        onBack={() => setView("home")}
+        onBack={() => { fetchTodayStatus(); setView("home"); }}
         onComplete={handleFreeTalkComplete}
       />
     );
@@ -196,13 +272,8 @@ const Index = () => {
     );
   }
 
-  // Calculate weekly progress percentage
   const completedDays = weekProgress.filter(Boolean).length;
   const weeklyProgress = Math.round((completedDays / 7) * 100);
-
-  const handleOpenJourney = () => {
-    setView("journey");
-  };
 
   return (
     <HomeScreen
@@ -210,24 +281,23 @@ const Index = () => {
       currentStreak={profile?.current_streak || 0}
       weekProgress={weekProgress}
       weeklyProgress={weeklyProgress}
+      userGoal={profile?.goal || 'conversation'}
+      todayChallengeCompleted={todayChallengeCompleted}
+      todayChallengePercentage={todayChallengePercentage}
+      todaySpeakingMinutes={todaySpeakingMinutes}
       onStartChallenge={handleStartChallenge}
       onStartFreeTalk={handleStartFreeTalk}
-      onOpenJourney={handleOpenJourney}
+      onOpenJourney={() => setView("journey")}
     />
   );
 };
 
-// Map database level to fluency category
 function mapLevelToCategory(level: string | null | undefined): string {
   switch (level) {
-    case 'beginner':
-      return 'starter';
-    case 'intermediate':
-      return 'confident';
-    case 'advanced':
-      return 'clear';
-    default:
-      return 'starter';
+    case 'beginner': return 'starter';
+    case 'intermediate': return 'confident';
+    case 'advanced': return 'clear';
+    default: return 'starter';
   }
 }
 

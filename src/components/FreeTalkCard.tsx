@@ -1,12 +1,12 @@
 import { Card, CardTitle, CardDescription } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { MessageCircle, Sparkles, Clock, ChevronRight } from "lucide-react";
+import { MessageCircle, Sparkles, Clock, ChevronRight, Mic } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface FreeTalkCardProps {
   remainingMinutes?: number;
   isPremium?: boolean;
   onStart: () => void;
+  todaySpeakingMinutes?: number;
   className?: string;
 }
 
@@ -14,6 +14,7 @@ export function FreeTalkCard({
   remainingMinutes = 10,
   isPremium = false,
   onStart,
+  todaySpeakingMinutes = 0,
   className
 }: FreeTalkCardProps) {
   return (
@@ -44,13 +45,20 @@ export function FreeTalkCard({
             Conversa livre com IA sobre qualquer tema
           </CardDescription>
           
-          {/* Time remaining (for free users) */}
-          {!isPremium && (
-            <div className="flex items-center gap-1.5 mt-2 text-xs text-muted-foreground">
-              <Clock className="w-3.5 h-3.5" />
-              <span>{remainingMinutes} min restantes esta semana</span>
-            </div>
-          )}
+          <div className="flex items-center gap-3 mt-2">
+            {!isPremium && (
+              <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                <Clock className="w-3.5 h-3.5" />
+                <span>{remainingMinutes} min restantes</span>
+              </div>
+            )}
+            {todaySpeakingMinutes > 0 && (
+              <div className="flex items-center gap-1.5 text-xs text-accent font-medium">
+                <Mic className="w-3.5 h-3.5" />
+                <span>{todaySpeakingMinutes} min falados hoje</span>
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Arrow */}

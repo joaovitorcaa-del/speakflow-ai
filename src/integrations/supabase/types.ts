@@ -91,6 +91,48 @@ export type Database = {
         }
         Relationships: []
       }
+      challenge_sessions: {
+        Row: {
+          completed: boolean
+          created_at: string
+          current_index: number
+          current_step: string
+          date: string
+          id: string
+          speaking_seconds: number | null
+          steps_completed: Json | null
+          transcriptions: Json | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          completed?: boolean
+          created_at?: string
+          current_index?: number
+          current_step?: string
+          date?: string
+          id?: string
+          speaking_seconds?: number | null
+          steps_completed?: Json | null
+          transcriptions?: Json | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          completed?: boolean
+          created_at?: string
+          current_index?: number
+          current_step?: string
+          date?: string
+          id?: string
+          speaking_seconds?: number | null
+          steps_completed?: Json | null
+          transcriptions?: Json | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       daily_progress: {
         Row: {
           challenge_completed: boolean
