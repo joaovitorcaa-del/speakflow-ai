@@ -26,11 +26,25 @@ import {
   Trash2,
   LogOut,
   Loader2,
+  Target,
+  Briefcase,
+  Plane,
+  MessageCircle,
+  GraduationCap,
+  Check,
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { useProfile } from "@/hooks/useProfile";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
+import { cn } from "@/lib/utils";
+
+const goalOptions = [
+  { value: "work", label: "Trabalho e Carreira", Icon: Briefcase },
+  { value: "travel", label: "Viagens", Icon: Plane },
+  { value: "conversation", label: "Conversação do Dia a Dia", Icon: MessageCircle },
+  { value: "study", label: "Estudos e Intercâmbio", Icon: GraduationCap },
+];
 
 export function SettingsMenu() {
   const { user, signOut, deleteAccount } = useAuth();
@@ -38,8 +52,10 @@ export function SettingsMenu() {
   const [showProfile, setShowProfile] = useState(false);
   const [showPlan, setShowPlan] = useState(false);
   const [showDelete, setShowDelete] = useState(false);
+  const [showTheme, setShowTheme] = useState(false);
   const [displayName, setDisplayName] = useState("");
   const [newEmail, setNewEmail] = useState("");
+  const [selectedGoal, setSelectedGoal] = useState("");
   const [saving, setSaving] = useState(false);
 
   const handleOpenProfile = () => {
@@ -89,6 +105,10 @@ export function SettingsMenu() {
           <DropdownMenuItem onClick={() => setShowPlan(true)}>
             <CreditCard className="w-4 h-4 mr-2" />
             Plano
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={() => { setSelectedGoal(profile?.goal || 'conversation'); setShowTheme(true); }}>
+            <Target className="w-4 h-4 mr-2" />
+            Tema
           </DropdownMenuItem>
           <DropdownMenuItem onClick={handleOpenProfile}>
             <UserPen className="w-4 h-4 mr-2" />
@@ -195,6 +215,46 @@ export function SettingsMenu() {
             </Button>
             <Button variant="destructive" onClick={handleDeleteAccount}>
               Excluir
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      {/* Theme Dialog */}
+      <Dialog open={showTheme} onOpenChange={setShowTheme}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Tema dos Desafios</DialogTitle>
+            <DialogDescription>Escolha o tema principal dos seus desafios diários</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            {goalOptions.map((opt) => (
+              <button
+                key={opt.value}
+                onClick={() => setSelectedGoal(opt.value)}
+                className={cn(
+                  "w-full flex items-center gap-3 p-3 rounded-xl border-2 transition-all text-left",
+                  selectedGoal === opt.value ? "border-primary bg-primary/10" : "border-border hover:border-primary/40"
+                )}
+              >
+                <div className={cn(
+                  "w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0",
+                  selectedGoal === opt.value ? "bg-primary text-primary-foreground" : "bg-muted"
+                )}>
+                  <opt.Icon className="w-4 h-4" />
+                </div>
+                <span className="text-sm font-medium flex-1">{opt.label}</span>
+                {selectedGoal === opt.value && <Check className="w-4 h-4 text-primary" />}
+              </button>
+            ))}
+          </div>
+          <DialogFooter>
+            <Button onClick={async () => {
+              setSaving(true);
+              await updateProfile({ goal: selectedGoal });
+              setSaving(false);
+              setShowTheme(false);
+            }} disabled={saving} variant="default">
+              {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : "Salvar"}
             </Button>
           </DialogFooter>
         </DialogContent>

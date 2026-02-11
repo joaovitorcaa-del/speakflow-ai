@@ -74,100 +74,27 @@ interface StepsCompleted {
   outputRecorded: boolean[];
 }
 
-const goalThemes: Record<string, { title: string; inputText: string; shadowingSentences: string[]; questions: string[] }> = {
-  work: {
-    title: "Descrevendo seu trabalho",
-    inputText: `I've been working at this company for about three years now. My main responsibilities include managing the marketing team and overseeing our digital campaigns. 
-    
-What I enjoy most is the creative problem-solving aspect of my job. Every day brings new challenges that keep me engaged and motivated. For example, last week we had to completely redesign our social media strategy because our target audience shifted.
-
-The most challenging part is probably balancing multiple projects at once. I usually have three or four campaigns running simultaneously, each with different deadlines and requirements. But I've learned to prioritize effectively and communicate clearly with my team.`,
-    shadowingSentences: [
-      "I've been working at this company for about three years now.",
-      "My main responsibilities include managing the marketing team.",
-      "What I enjoy most is the creative problem-solving aspect.",
-      "Every day brings new challenges that keep me engaged.",
-      "I've learned to prioritize effectively and communicate clearly.",
-    ],
-    questions: [
-      "Tell me about your current job or studies. What do you do on a typical day?",
-      "What's the most interesting project you've worked on recently?",
-      "What challenges do you face in your work? How do you handle them?",
-      "How do you stay motivated when things get difficult?"
-    ]
-  },
-  travel: {
-    title: "Planejando uma viagem",
-    inputText: `I'm planning a trip to Europe next summer. I've always wanted to visit Italy and France, especially the coastal areas. I'm thinking of spending about two weeks there.
-
-The tricky part is deciding between a guided tour or traveling independently. Tours are convenient but I prefer having flexibility to explore on my own. I usually research places online and make a rough itinerary, but I leave room for spontaneous adventures.
-
-One thing I've learned is to pack light. On my last trip, I brought too many clothes and it was a hassle. Now I stick to versatile pieces that I can mix and match.`,
-    shadowingSentences: [
-      "I'm planning a trip to Europe next summer.",
-      "I've always wanted to visit Italy and France.",
-      "Tours are convenient but I prefer having flexibility.",
-      "I usually research places online and make a rough itinerary.",
-      "One thing I've learned is to pack light.",
-    ],
-    questions: [
-      "Tell me about a place you'd love to visit. Why does it interest you?",
-      "Describe your last trip. What did you enjoy most?",
-      "Do you prefer guided tours or traveling independently? Why?",
-      "What's your best travel tip for other travelers?"
-    ]
-  },
-  conversation: {
-    title: "Conversação do dia a dia",
-    inputText: `I had a really interesting weekend. On Saturday, I met up with some old friends for brunch at this new café downtown. The food was amazing - I had avocado toast with poached eggs.
-
-After that, we walked around the neighborhood and did some window shopping. There's this vintage bookstore that I always love visiting. I ended up buying a classic novel I've been meaning to read.
-
-Sunday was more relaxed. I stayed home, did some cleaning, and watched a documentary about ocean life. It was really fascinating to learn about deep sea creatures.`,
-    shadowingSentences: [
-      "I had a really interesting weekend.",
-      "I met up with some old friends for brunch.",
-      "There's this vintage bookstore that I always love visiting.",
-      "Sunday was more relaxed and I stayed home.",
-      "It was really fascinating to learn about deep sea creatures.",
-    ],
-    questions: [
-      "What do you usually do on weekends? Tell me about your routine.",
-      "Do you have any hobbies? What do you enjoy doing in your free time?",
-      "Tell me about someone important in your life. Why are they special?",
-      "What's something new you've learned recently?"
-    ]
-  },
-  study: {
-    title: "Vida acadêmica",
-    inputText: `I'm currently in my second year of university, studying computer science. It's challenging but really rewarding. My favorite subjects are algorithms and artificial intelligence.
-
-What I find most interesting is how technology is changing so rapidly. Last semester, I worked on a project using machine learning to analyze data. It was my first hands-on experience with AI and I learned a lot.
-
-Balancing studies with other activities can be tough. I try to manage my time by using a planner and setting specific study hours. It doesn't always work perfectly, but it helps me stay organized.`,
-    shadowingSentences: [
-      "I'm currently in my second year of university.",
-      "My favorite subjects are algorithms and artificial intelligence.",
-      "What I find most interesting is how technology is changing.",
-      "Last semester I worked on a project using machine learning.",
-      "I try to manage my time by using a planner.",
-    ],
-    questions: [
-      "What are you studying or what did you study? Why did you choose it?",
-      "Tell me about a memorable learning experience you've had.",
-      "How do you manage your time between studies and other activities?",
-      "What are your academic or career goals?"
-    ]
-  }
-};
+interface ChallengeContent {
+  title: string;
+  inputText: string;
+  shadowingSentences: string[];
+  questions: string[];
+}
 
 export function ChallengeFlow({ onBack, onComplete, isFixation = false, resumeSession }: ChallengeFlowProps) {
   const { profile } = useProfile();
   const { user } = useAuth();
 
   const currentGoal = profile?.goal || 'conversation';
-  const themeContent = goalThemes[currentGoal] || goalThemes.conversation;
-  const shadowingSentences = themeContent.shadowingSentences;
+  const currentLevel = profile?.level || 'beginner';
+
+  // Dynamic content state
+  const [challengeContent, setChallengeContent] = useState<ChallengeContent | null>(null);
+  const [isLoadingContent, setIsLoadingContent] = useState(true);
+  const [contentError, setContentError] = useState<string | null>(null);
+
+  const shadowingSentences = challengeContent?.shadowingSentences || [];
+  const questions = challengeContent?.questions || [];
 
   // State - possibly resumed
   const [step, setStep] = useState<ChallengeStep>((resumeSession?.current_step as ChallengeStep) || "input");
@@ -193,14 +120,87 @@ export function ChallengeFlow({ onBack, onComplete, isFixation = false, resumeSe
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const audioCache = useRef<Map<string, string>>(new Map());
 
-  // Steps completed tracking
+  // Steps completed tracking - initialized after content loads
   const [stepsCompleted, setStepsCompleted] = useState<StepsCompleted>(
     resumeSession?.steps_completed || {
       inputListened: false,
-      shadowingRecorded: new Array(shadowingSentences.length).fill(false),
-      outputRecorded: new Array(themeContent.questions.length).fill(false),
+      shadowingRecorded: [],
+      outputRecorded: [],
     }
   );
+
+  // Load challenge content
+  useEffect(() => {
+    const loadContent = async () => {
+      if (!user) return;
+      const today = new Date().toISOString().split('T')[0];
+
+      try {
+        // Check for cached content in challenge_sessions
+        const { data: session } = await supabase
+          .from('challenge_sessions')
+          .select('challenge_content')
+          .eq('user_id', user.id)
+          .eq('date', today)
+          .maybeSingle();
+
+        if (session?.challenge_content) {
+          const cached = session.challenge_content as unknown as ChallengeContent;
+          setChallengeContent(cached);
+          if (!resumeSession) {
+            setStepsCompleted({
+              inputListened: false,
+              shadowingRecorded: new Array(cached.shadowingSentences.length).fill(false),
+              outputRecorded: new Array(cached.questions.length).fill(false),
+            });
+          }
+          setIsLoadingContent(false);
+          return;
+        }
+
+        // Fetch vocabulary words
+        const { data: vocabData } = await supabase
+          .from('vocabulary_words')
+          .select('word')
+          .eq('user_id', user.id)
+          .eq('is_confident', true)
+          .order('updated_at', { ascending: false })
+          .limit(20);
+
+        const vocabWords = (vocabData || []).map(v => v.word);
+
+        // Generate new content
+        const { data, error } = await supabase.functions.invoke('generate-challenge', {
+          body: { goal: currentGoal, level: currentLevel, date: today, vocabularyWords: vocabWords }
+        });
+
+        if (error) throw error;
+
+        setChallengeContent(data);
+        setStepsCompleted({
+          inputListened: false,
+          shadowingRecorded: new Array(data.shadowingSentences.length).fill(false),
+          outputRecorded: new Array(data.questions.length).fill(false),
+        });
+
+        // Cache in challenge_sessions
+        await supabase.from('challenge_sessions').upsert({
+          user_id: user.id,
+          date: today,
+          challenge_content: data as any,
+          current_step: 'input',
+          current_index: 0,
+        }, { onConflict: 'user_id,date' });
+      } catch (err) {
+        console.error('[ChallengeFlow] Error loading content:', err);
+        setContentError('Erro ao gerar desafio. Tente novamente.');
+      } finally {
+        setIsLoadingContent(false);
+      }
+    };
+
+    loadContent();
+  }, [user, currentGoal, currentLevel]);
 
   const {
     transcript,
@@ -219,7 +219,7 @@ export function ChallengeFlow({ onBack, onComplete, isFixation = false, resumeSe
   const getCompletionPercentage = useCallback(() => {
     const inputWeight = 1;
     const shadowingWeight = shadowingSentences.length;
-    const outputWeight = themeContent.questions.length;
+    const outputWeight = questions.length;
     const total = inputWeight + shadowingWeight + outputWeight;
 
     let completed = stepsCompleted.inputListened ? 1 : 0;
@@ -227,13 +227,13 @@ export function ChallengeFlow({ onBack, onComplete, isFixation = false, resumeSe
     completed += stepsCompleted.outputRecorded.filter(Boolean).length;
 
     return Math.round((completed / total) * 100);
-  }, [stepsCompleted, shadowingSentences.length, themeContent.questions.length]);
+  }, [stepsCompleted, shadowingSentences.length, questions.length]);
 
   const getProgress = () => {
     switch (step) {
       case "input": return 10;
       case "shadowing": return 20 + (shadowingIndex / shadowingSentences.length) * 30;
-      case "output": return 50 + (outputIndex / themeContent.questions.length) * 35;
+      case "output": return 50 + (outputIndex / Math.max(1, questions.length)) * 35;
       case "feedback": return 90;
       case "complete": return 100;
       default: return 0;
@@ -342,7 +342,7 @@ export function ChallengeFlow({ onBack, onComplete, isFixation = false, resumeSe
 
   const playInputAudio = () => {
     if (isPlaying) { stopAudio(); return; }
-    playWithElevenLabs(themeContent.inputText);
+    playWithElevenLabs(challengeContent?.inputText || '');
   };
 
   const playShadowingSentence = () => {
@@ -391,7 +391,7 @@ export function ChallengeFlow({ onBack, onComplete, isFixation = false, resumeSe
             newOutput[outputIndex] = true;
             return { ...prev, outputRecorded: newOutput };
           });
-          getOutputFeedback(finalText.trim(), themeContent.questions[outputIndex]);
+          getOutputFeedback(finalText.trim(), questions[outputIndex]);
         }
       } else {
         // Even if empty, treat accumulated text as valid
@@ -427,7 +427,7 @@ export function ChallengeFlow({ onBack, onComplete, isFixation = false, resumeSe
       const { data, error } = await supabase.functions.invoke('evaluate-speech', {
         body: {
           transcription: userText,
-          context: `Question: "${question}" | Theme: ${themeContent.title}`,
+          context: `Question: "${question}" | Theme: ${challengeContent?.title || ''}`,
           challengeType: 'output-phrase',
           speakingDurationSeconds: 30
         }
@@ -455,7 +455,7 @@ export function ChallengeFlow({ onBack, onComplete, isFixation = false, resumeSe
       const { data, error } = await supabase.functions.invoke('evaluate-speech', {
         body: {
           transcription: fullTranscription,
-          context: themeContent.title,
+          context: challengeContent?.title || '',
           challengeType: 'daily-challenge',
           speakingDurationSeconds: Math.round(speakingDuration)
         }
@@ -497,7 +497,7 @@ export function ChallengeFlow({ onBack, onComplete, isFixation = false, resumeSe
         setStep("output");
       }
     } else if (step === "output") {
-      if (outputIndex < themeContent.questions.length - 1) {
+      if (outputIndex < questions.length - 1) {
         setOutputIndex(prev => prev + 1);
       } else {
         setShowAnalysisAnimation(true);
@@ -511,6 +511,27 @@ export function ChallengeFlow({ onBack, onComplete, isFixation = false, resumeSe
 
   const completionPct = getCompletionPercentage();
   const canFinish = allTranscriptions.length > 0 && speakingDuration >= 10;
+
+  // Loading state for dynamic content
+  if (isLoadingContent) {
+    return (
+      <div className="min-h-[100dvh] bg-background flex flex-col items-center justify-center">
+        <Loader2 className="w-10 h-10 animate-spin text-primary mb-4" />
+        <p className="text-muted-foreground text-sm">Gerando seu desafio do dia...</p>
+      </div>
+    );
+  }
+
+  if (contentError || !challengeContent) {
+    return (
+      <div className="min-h-[100dvh] bg-background flex flex-col items-center justify-center px-6">
+        <AlertCircle className="w-10 h-10 text-destructive mb-4" />
+        <p className="text-foreground font-medium mb-2">Erro ao carregar desafio</p>
+        <p className="text-muted-foreground text-sm text-center mb-6">{contentError || 'Conteúdo indisponível'}</p>
+        <Button variant="outline" onClick={onBack}>Voltar</Button>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-[100dvh] bg-background flex flex-col overflow-x-hidden">
@@ -566,7 +587,7 @@ export function ChallengeFlow({ onBack, onComplete, isFixation = false, resumeSe
 
             <Card variant="default" padding="default" className="mb-auto">
               <p className="text-sm text-muted-foreground mb-2">Tema do dia</p>
-              <h3 className="font-semibold mb-2">{themeContent.title}</h3>
+              <h3 className="font-semibold mb-2">{challengeContent?.title}</h3>
               <p className="text-sm text-muted-foreground">
                 Ouça com atenção e prepare-se para praticar frases relacionadas ao tema.
               </p>
@@ -694,14 +715,14 @@ export function ChallengeFlow({ onBack, onComplete, isFixation = false, resumeSe
                 <span className="text-accent-foreground text-sm font-bold">3</span>
               </div>
               <span className="text-sm font-medium text-muted-foreground">
-                OUTPUT • {outputIndex + 1}/{themeContent.questions.length}
+                OUTPUT • {outputIndex + 1}/{questions.length}
               </span>
             </div>
             <h2 className="text-2xl font-bold mb-6">Agora é sua vez!</h2>
 
             <Card variant="primary" padding="lg" className="mb-6 max-w-full">
               <p className="text-lg font-medium text-center">
-                {themeContent.questions[outputIndex]}
+                {questions[outputIndex]}
               </p>
             </Card>
 
@@ -779,7 +800,7 @@ export function ChallengeFlow({ onBack, onComplete, isFixation = false, resumeSe
               className="mt-6" 
               onClick={handleNextStep}
             >
-              {outputIndex < themeContent.questions.length - 1 ? "Próxima pergunta" : "Ver feedback"}
+              {outputIndex < questions.length - 1 ? "Próxima pergunta" : "Ver feedback"}
               <ChevronRight className="w-5 h-5" />
             </Button>
           </div>

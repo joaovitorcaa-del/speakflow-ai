@@ -1,7 +1,7 @@
 import { AppPreviewCarousel } from "./AppPreviewCarousel";
 
 interface OnboardingProps {
-  onComplete: () => void;
+  onComplete: (selectedGoal: string) => void;
 }
 
 export interface OnboardingData {
