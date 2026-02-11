@@ -8,9 +8,9 @@ import { FreeTalkCard } from "@/components/FreeTalkCard";
 import { MetricCard } from "@/components/MetricCard";
 import { VocabularyCard } from "@/components/VocabularyCard";
 import { CalendarHistoryModal } from "@/components/CalendarHistoryModal";
-import { useAuth } from "@/hooks/useAuth";
 import { useWeeklyStats } from "@/hooks/useWeeklyStats";
 import { useOfflineCache } from "@/hooks/useOfflineCache";
+import { SettingsMenu } from "@/components/SettingsMenu";
 import { useEffect } from "react";
 import { 
   Play, 
@@ -19,7 +19,7 @@ import {
   Mic, 
   Brain,
   ChevronRight,
-  LogOut,
+  
   TrendingUp,
   Map,
   WifiOff,
@@ -63,7 +63,6 @@ export function HomeScreen({
   onStartFreeTalk,
   onOpenJourney
 }: HomeScreenProps) {
-  const { signOut } = useAuth();
   const { stats } = useWeeklyStats();
   const { isOnline, syncAndCache } = useOfflineCache();
   const navigate = useNavigate();
@@ -115,14 +114,7 @@ export function HomeScreen({
             <ProgressRing progress={weeklyProgress} size={56} strokeWidth={5}>
               <span className="text-xs font-bold">{weeklyProgress}%</span>
             </ProgressRing>
-            <Button 
-              variant="ghost" 
-              size="icon-sm" 
-              onClick={signOut}
-              className="text-secondary-foreground/70 hover:text-secondary-foreground hover:bg-secondary-foreground/10"
-            >
-              <LogOut className="w-5 h-5" />
-            </Button>
+            <SettingsMenu />
           </div>
         </div>
         

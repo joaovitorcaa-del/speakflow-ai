@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { MessageCircle, ArrowRight, Loader2 } from 'lucide-react';
+import { MessageCircle, ArrowRight, ArrowLeft, Loader2 } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { cn } from '@/lib/utils';
 import { z } from 'zod';
@@ -12,8 +12,10 @@ import { z } from 'zod';
 const emailSchema = z.string().email('Email inválido');
 const passwordSchema = z.string().min(6, 'A senha deve ter pelo menos 6 caracteres');
 
+type AuthMode = 'login' | 'signup' | 'forgot';
+
 export default function Auth() {
-  const [isLogin, setIsLogin] = useState(true);
+  const [mode, setMode] = useState<AuthMode>('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [displayName, setDisplayName] = useState('');
@@ -21,7 +23,7 @@ export default function Auth() {
   const [loading, setLoading] = useState(false);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   
-  const { signIn, signUp, user } = useAuth();
+  const { signIn, signUp, resetPassword, user } = useAuth();
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -30,34 +32,38 @@ export default function Auth() {
     }
   }, [user, navigate]);
 
-  const validateForm = () => {
-    try {
-      emailSchema.parse(email);
-    } catch {
-      setError('Por favor, insira um email válido');
-      return false;
-    }
-
-    try {
-      passwordSchema.parse(password);
-    } catch {
-      setError('A senha deve ter pelo menos 6 caracteres');
-      return false;
-    }
-
-    return true;
-  };
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
     setSuccessMessage(null);
 
-    if (!validateForm()) return;
+    // Validate email
+    try { emailSchema.parse(email); } catch {
+      setError('Por favor, insira um email válido');
+      return;
+    }
+
+    if (mode === 'forgot') {
+      setLoading(true);
+      const { error } = await resetPassword(email);
+      if (error) {
+        setError(error.message);
+      } else {
+        setSuccessMessage('Email de recuperação enviado! Verifique sua caixa de entrada.');
+      }
+      setLoading(false);
+      return;
+    }
+
+    // Validate password for login/signup
+    try { passwordSchema.parse(password); } catch {
+      setError('A senha deve ter pelo menos 6 caracteres');
+      return;
+    }
 
     setLoading(true);
 
-    if (isLogin) {
+    if (mode === 'login') {
       const { error } = await signIn(email, password);
       if (error) {
         if (error.message.includes('Invalid login credentials')) {
@@ -84,6 +90,18 @@ export default function Auth() {
     setLoading(false);
   };
 
+  const switchMode = (newMode: AuthMode) => {
+    setMode(newMode);
+    setError(null);
+    setSuccessMessage(null);
+  };
+
+  const titles: Record<AuthMode, { heading: string; sub: string }> = {
+    login: { heading: 'Bem-vindo de volta!', sub: 'Entre para continuar seu progresso' },
+    signup: { heading: 'Crie sua conta', sub: 'Comece a destravar sua fala em inglês' },
+    forgot: { heading: 'Recuperar conta', sub: 'Enviaremos um link para redefinir sua senha' },
+  };
+
   return (
     <div className="min-h-screen bg-background flex flex-col">
       <div className="flex-1 flex flex-col items-center justify-center px-6 py-12">
@@ -92,56 +110,36 @@ export default function Auth() {
           <MessageCircle className="w-8 h-8 text-primary-foreground" />
         </div>
 
-        <h1 className="text-2xl font-bold mb-2 text-center">
-          {isLogin ? 'Bem-vindo de volta!' : 'Crie sua conta'}
-        </h1>
-        <p className="text-muted-foreground mb-8 text-center">
-          {isLogin 
-            ? 'Entre para continuar seu progresso' 
-            : 'Comece a destravar sua fala em inglês'}
-        </p>
+        <h1 className="text-2xl font-bold mb-2 text-center">{titles[mode].heading}</h1>
+        <p className="text-muted-foreground mb-8 text-center">{titles[mode].sub}</p>
 
         <Card variant="default" padding="lg" className="w-full max-w-sm">
           <form onSubmit={handleSubmit} className="space-y-4">
-            {!isLogin && (
+            {mode === 'signup' && (
               <div className="space-y-2">
                 <Label htmlFor="displayName">Seu nome</Label>
-                <Input
-                  id="displayName"
-                  type="text"
-                  placeholder="Como devemos te chamar?"
-                  value={displayName}
-                  onChange={(e) => setDisplayName(e.target.value)}
-                  disabled={loading}
-                />
+                <Input id="displayName" type="text" placeholder="Como devemos te chamar?" value={displayName} onChange={(e) => setDisplayName(e.target.value)} disabled={loading} />
               </div>
             )}
 
             <div className="space-y-2">
               <Label htmlFor="email">Email</Label>
-              <Input
-                id="email"
-                type="email"
-                placeholder="seu@email.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-                disabled={loading}
-              />
+              <Input id="email" type="email" placeholder="seu@email.com" value={email} onChange={(e) => setEmail(e.target.value)} required disabled={loading} />
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="password">Senha</Label>
-              <Input
-                id="password"
-                type="password"
-                placeholder="••••••••"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-                disabled={loading}
-              />
-            </div>
+            {mode !== 'forgot' && (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="password">Senha</Label>
+                  {mode === 'login' && (
+                    <button type="button" onClick={() => switchMode('forgot')} className="text-xs text-primary hover:underline">
+                      Esqueceu a senha?
+                    </button>
+                  )}
+                </div>
+                <Input id="password" type="password" placeholder="••••••••" value={password} onChange={(e) => setPassword(e.target.value)} required disabled={loading} />
+              </div>
+            )}
 
             {error && (
               <div className="p-3 rounded-lg bg-destructive/10 border border-destructive/20">
@@ -155,39 +153,30 @@ export default function Auth() {
               </div>
             )}
 
-            <Button
-              type="submit"
-              variant="hero"
-              size="xl"
-              className="w-full"
-              disabled={loading}
-            >
+            <Button type="submit" variant="hero" size="xl" className="w-full" disabled={loading}>
               {loading ? (
                 <Loader2 className="w-5 h-5 animate-spin" />
+              ) : mode === 'forgot' ? (
+                <>Enviar link<ArrowRight className="w-5 h-5" /></>
               ) : (
-                <>
-                  {isLogin ? 'Entrar' : 'Criar conta'}
-                  <ArrowRight className="w-5 h-5" />
-                </>
+                <>{mode === 'login' ? 'Entrar' : 'Criar conta'}<ArrowRight className="w-5 h-5" /></>
               )}
             </Button>
           </form>
         </Card>
 
-        <button
-          onClick={() => {
-            setIsLogin(!isLogin);
-            setError(null);
-            setSuccessMessage(null);
-          }}
-          className={cn(
-            "mt-6 text-sm text-muted-foreground hover:text-foreground transition-colors"
-          )}
-        >
-          {isLogin 
-            ? 'Não tem conta? Cadastre-se' 
-            : 'Já tem conta? Faça login'}
-        </button>
+        {mode === 'forgot' ? (
+          <button onClick={() => switchMode('login')} className="mt-6 text-sm text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1">
+            <ArrowLeft className="w-4 h-4" /> Voltar ao login
+          </button>
+        ) : (
+          <button
+            onClick={() => switchMode(mode === 'login' ? 'signup' : 'login')}
+            className="mt-6 text-sm text-muted-foreground hover:text-foreground transition-colors"
+          >
+            {mode === 'login' ? 'Não tem conta? Cadastre-se' : 'Já tem conta? Faça login'}
+          </button>
+        )}
       </div>
     </div>
   );
