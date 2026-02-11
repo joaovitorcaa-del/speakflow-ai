@@ -1,68 +1,54 @@
 
 
-# Correcao: Tempo de fala no Free Talk
+# Botao "Tentar Novamente" no Free Talk
 
-## Problemas encontrados
+## Problema
 
-### 1. Tempo nao salvo ao sair
-Quando voce aperta o botao de voltar (seta) no Free Talk, o tempo falado **nao e salvo**. Apenas o botao "Finalizar" chama a funcao que grava os minutos no banco de dados. Resultado: voce conversa, volta, e os 24 minutos do desafio anterior permanecem inalterados.
-
-### 2. Medicao baseada em tempo de tela
-O tempo de fala e calculado como o intervalo entre apertar o mic e parar de gravar (tempo de relogio). Isso inclui pausas, silencio e tempo de processamento. O correto e contar apenas os segundos em que o microfone esteve efetivamente capturando audio.
+Quando o reconhecimento de voz entende errado o que foi dito, a frase incorreta e enviada para a IA, que responde com base nesse texto errado, desviando a conversa para um caminho inesperado. Hoje nao ha como desfazer isso.
 
 ## Solucao
 
-### Mudanca 1: Salvar tempo ao sair pelo botao voltar
+Adicionar um botao de "Tentar novamente" (icone de refresh) nas mensagens do usuario no chat. Ao clicar:
 
-**Arquivo: `src/components/FreeTalkFlow.tsx`**
+1. Remove a ultima mensagem do usuario E a resposta da IA correspondente
+2. Reativa o microfone automaticamente para o usuario falar de novo
+3. A conversa retorna ao ponto anterior, como se a frase errada nunca tivesse sido enviada
 
-- Modificar `onBack` para tambem chamar `onComplete` com o tempo acumulado, garantindo que os minutos sejam salvos independente de como o usuario sai da tela.
-
-**Arquivo: `src/pages/Index.tsx`**
-
-- Remover o handler separado de `onBack` do FreeTalk e unificar com `onComplete`, garantindo que qualquer saida salve o tempo.
-
-### Mudanca 2: Usar duracao real das gravacoes
-
-**Arquivo: `src/components/FreeTalkFlow.tsx`**
-
-- Manter o calculo atual de `speakingTime` baseado no intervalo mic-aberto/mic-fechado (que e uma aproximacao razoavel da duracao real de fala).
-- A diferenca entre "tempo com mic aberto" e "tempo de tela" ja esta correta -- o problema real era o tempo nao ser salvo.
-
-### Mudanca 3: Mesma correcao no ChallengeFlow
-
-**Arquivo: `src/components/ChallengeFlow.tsx`**
-
-- O ChallengeFlow usa a mesma logica de `Date.now()`. Como ele ja salva via `onComplete` e `onBack`, o tempo ja e registrado corretamente. Nenhuma mudanca necessaria aqui.
-
-## Detalhes tecnicos
-
-### FreeTalkFlow.tsx
+## Experiencia do usuario
 
 ```text
-1. Novo handler: handleBack()
-   - Se speakingTime > 0, chamar onComplete(minutesSpoken)
-   - Se speakingTime === 0, chamar onBack() direto
-   - Se mic estiver ativo, parar gravacao antes de sair
+[Mensagem do usuario com erro] [icone retry]
+[Resposta da IA baseada no erro]
 
-2. Botao voltar: trocar onClick de onBack para handleBack
+Usuario clica no retry →
+  - Ambas mensagens somem
+  - Microfone ativa automaticamente
+  - Usuario fala novamente
+  - Nova resposta da IA e gerada
 ```
 
-### Index.tsx
+O botao aparece apenas na ultima mensagem do usuario (nao faz sentido refazer mensagens anteriores, pois a IA ja respondeu com base nelas e a conversa seguiu).
 
-```text
-1. onBack do FreeTalk: manter fetchTodayStatus + setView("home")
-   mas agora o FreeTalkFlow ja chama onComplete internamente antes
-   
-   Alternativa mais limpa: unificar - o FreeTalkFlow sempre chama
-   onComplete ao sair, mesmo com 0 minutos. Assim o Index.tsx
-   nao precisa de handler separado para back.
-```
+## Mudancas tecnicas
 
-## Arquivos modificados
+### Arquivo: `src/components/FreeTalkFlow.tsx`
 
-| Arquivo | Mudanca |
-|---------|---------|
-| `src/components/FreeTalkFlow.tsx` | Salvar tempo ao sair pelo botao voltar, parar mic se ativo |
-| `src/pages/Index.tsx` | Simplificar handlers do FreeTalk |
+1. **Import adicional**: `RotateCcw` do lucide-react
+
+2. **Nova funcao `handleRetry`**:
+   - Identifica a ultima mensagem do usuario e a resposta da IA logo apos ela
+   - Remove ambas do array `messages`
+   - Inicia o microfone automaticamente (`startListening()`)
+   - Seta `micStatus = 'listening'` e `recordingStartRef`
+
+3. **Botao retry na UI**: Ao lado do indicador "Enviado" na ultima mensagem do usuario, adicionar um botao com icone `RotateCcw`. Visivel apenas quando:
+   - E a ultima mensagem do usuario no array
+   - Nao esta gravando (`!isListening`)
+   - Nao esta carregando (`!isLoading`)
+
+4. **Logica de identificacao**: Comparar o `message.id` com o id da ultima mensagem de role "user" no array para decidir se mostra o botao
+
+### Nenhuma mudanca em outros arquivos
+
+A logica e inteiramente local ao componente FreeTalkFlow.
 
