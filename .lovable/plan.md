@@ -1,45 +1,68 @@
 
-# Correcao: Microfone FreeTalk desativa sozinho no iOS
 
-## Causa Raiz
+# Correcao: Tempo de fala no Free Talk
 
-O hook `useSpeechRecognition` tem um `useEffect` (linha 185) que depende de `initRecognition`. Por sua vez, `initRecognition` depende de `onResult`, `onError` e `onPartialResult` — callbacks passados como props que sao funcoes novas a cada render.
+## Problemas encontrados
 
-Fluxo do bug:
-```text
-1. Usuario clica no mic → startListening() → seta micStatus = 'listening'
-2. Componente re-renderiza (novo micStatus)
-3. Nova funcao onError criada → initRecognition muda → useEffect cleanup executa
-4. Cleanup chama recognitionRef.current.abort() → microfone desliga
-5. useEffect re-executa, cria nova instancia (mas nao inicia)
-6. Resultado: mic liga e desliga no mesmo segundo
-```
+### 1. Tempo nao salvo ao sair
+Quando voce aperta o botao de voltar (seta) no Free Talk, o tempo falado **nao e salvo**. Apenas o botao "Finalizar" chama a funcao que grava os minutos no banco de dados. Resultado: voce conversa, volta, e os 24 minutos do desafio anterior permanecem inalterados.
 
-O Shadowing funciona porque o fluxo de re-renders e menos frequente no momento critico de gravacao.
+### 2. Medicao baseada em tempo de tela
+O tempo de fala e calculado como o intervalo entre apertar o mic e parar de gravar (tempo de relogio). Isso inclui pausas, silencio e tempo de processamento. O correto e contar apenas os segundos em que o microfone esteve efetivamente capturando audio.
 
 ## Solucao
 
-Usar refs para os callbacks (`onResult`, `onError`, `onPartialResult`) ao inves de inclui-los diretamente nas dependencias do `useCallback`. Isso torna `initRecognition` estavel entre renders, evitando que o `useEffect` re-execute e aborte o reconhecimento.
+### Mudanca 1: Salvar tempo ao sair pelo botao voltar
 
-### Mudancas em `src/hooks/useSpeechRecognition.tsx`
+**Arquivo: `src/components/FreeTalkFlow.tsx`**
 
-1. **Adicionar 3 refs para callbacks**:
-   - `onResultRef = useRef(onResult)`
-   - `onErrorRef = useRef(onError)` 
-   - `onPartialResultRef = useRef(onPartialResult)`
+- Modificar `onBack` para tambem chamar `onComplete` com o tempo acumulado, garantindo que os minutos sejam salvos independente de como o usuario sai da tela.
 
-2. **Manter refs atualizadas** com um `useEffect` separado que sincroniza os valores a cada render (sem deps pesadas).
+**Arquivo: `src/pages/Index.tsx`**
 
-3. **Dentro de `initRecognition`**: substituir chamadas diretas a `onResult`, `onError`, `onPartialResult` por chamadas via ref (`onResultRef.current?.(...)`).
+- Remover o handler separado de `onBack` do FreeTalk e unificar com `onComplete`, garantindo que qualquer saida salve o tempo.
 
-4. **Remover callbacks das dependencias** de `initRecognition` e `stopListening`, deixando apenas `isSupported`, `continuous`, `language`.
+### Mudanca 2: Usar duracao real das gravacoes
 
-5. **Simplificar o `useEffect` de inicializacao** (linha 185): como `initRecognition` agora e estavel, ele nao re-executa a cada render, eliminando o abort indevido.
+**Arquivo: `src/components/FreeTalkFlow.tsx`**
 
-### Arquivo modificado
+- Manter o calculo atual de `speakingTime` baseado no intervalo mic-aberto/mic-fechado (que e uma aproximacao razoavel da duracao real de fala).
+- A diferenca entre "tempo com mic aberto" e "tempo de tela" ja esta correta -- o problema real era o tempo nao ser salvo.
+
+### Mudanca 3: Mesma correcao no ChallengeFlow
+
+**Arquivo: `src/components/ChallengeFlow.tsx`**
+
+- O ChallengeFlow usa a mesma logica de `Date.now()`. Como ele ja salva via `onComplete` e `onBack`, o tempo ja e registrado corretamente. Nenhuma mudanca necessaria aqui.
+
+## Detalhes tecnicos
+
+### FreeTalkFlow.tsx
+
+```text
+1. Novo handler: handleBack()
+   - Se speakingTime > 0, chamar onComplete(minutesSpoken)
+   - Se speakingTime === 0, chamar onBack() direto
+   - Se mic estiver ativo, parar gravacao antes de sair
+
+2. Botao voltar: trocar onClick de onBack para handleBack
+```
+
+### Index.tsx
+
+```text
+1. onBack do FreeTalk: manter fetchTodayStatus + setView("home")
+   mas agora o FreeTalkFlow ja chama onComplete internamente antes
+   
+   Alternativa mais limpa: unificar - o FreeTalkFlow sempre chama
+   onComplete ao sair, mesmo com 0 minutos. Assim o Index.tsx
+   nao precisa de handler separado para back.
+```
+
+## Arquivos modificados
 
 | Arquivo | Mudanca |
 |---------|---------|
-| `src/hooks/useSpeechRecognition.tsx` | Estabilizar callbacks via refs para evitar re-criacao de recognition a cada render |
+| `src/components/FreeTalkFlow.tsx` | Salvar tempo ao sair pelo botao voltar, parar mic se ativo |
+| `src/pages/Index.tsx` | Simplificar handlers do FreeTalk |
 
-Nenhuma mudanca necessaria em `FreeTalkFlow.tsx` ou `ChallengeFlow.tsx` — o problema esta inteiramente no hook.
