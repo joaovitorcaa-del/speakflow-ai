@@ -1,54 +1,118 @@
 
 
-# Botao "Tentar Novamente" no Free Talk
+# Correcoes no ChallengeFlow: mic apos audio, transcricao vazia e navegacao
 
-## Problema
+## Problemas identificados
 
-Quando o reconhecimento de voz entende errado o que foi dito, a frase incorreta e enviada para a IA, que responde com base nesse texto errado, desviando a conversa para um caminho inesperado. Hoje nao ha como desfazer isso.
+### 1. Audio playback quebra o microfone no iOS
+Quando o usuario clica no botao de ouvir a frase (Volume2), o `HTMLAudioElement` toma controle da sessao de audio do dispositivo. No iOS Safari, apenas uma "audio session" pode estar ativa por vez. Quando o usuario tenta gravar depois, a Web Speech API inicia (o botao muda visualmente, o iPhone mostra o indicador de mic), mas o audio nao e roteado para o reconhecimento de fala -- resultado: nenhuma transcricao.
 
-## Solucao
+**Causa no codigo (linhas 304-331)**: `playAudioUrl` cria um `new Audio()` que fica referenciado em `audioRef.current`, mas apos o `onended`, o elemento nao e liberado. O `audio.pause()` na linha 306 pausa mas nao libera a sessao de audio.
 
-Adicionar um botao de "Tentar novamente" (icone de refresh) nas mensagens do usuario no chat. Ao clicar:
+**Solucao**: No `onended` e no `stopAudio`, alem de pausar, setar `audioRef.current.src = ''` e `audioRef.current = null` para liberar a sessao de audio do iOS antes de qualquer tentativa de gravar. Tambem adicionar um guard em `handleRecordToggle`: se o audio estiver tocando, parar antes de iniciar a gravacao.
 
-1. Remove a ultima mensagem do usuario E a resposta da IA correspondente
-2. Reativa o microfone automaticamente para o usuario falar de novo
-3. A conversa retorna ao ponto anterior, como se a frase errada nunca tivesse sido enviada
+### 2. Feedback falso de "Audio recebido" sem transcricao
+Linha 397-398: quando `text` esta vazio, `setAudioConfirmed(true)` e chamado mesmo assim, mostrando o card verde "Audio recebido" sem ter capturado nada.
 
-## Experiencia do usuario
+**Solucao**: Novo estado `transcriptionFailed`. Quando `text` esta vazio, setar `transcriptionFailed = true` em vez de `audioConfirmed = true`. Na UI, mostrar card amarelo com "Nao foi possivel capturar sua fala. Tente novamente." O estado limpa ao iniciar nova gravacao ou mudar de step/index.
 
+### 3. Avanco sem registro permite prosseguir sem aviso
+O botao "Proxima frase" nao diferencia se a etapa foi completada ou nao.
+
+**Solucao**: Se a etapa atual nao foi completada (sem gravacao registrada), o botao muda para "Pular" com estilo `outline` em vez de `hero`. O avanco e permitido, mas nao marca a etapa como concluida.
+
+### 4. Sem botao de voltar entre frases
+Nao ha como retornar a uma frase anterior no shadowing ou output.
+
+**Solucao**: Botao com icone `ChevronLeft` ao lado do botao de avancar. No shadowing: decrementa `shadowingIndex` se > 0. No output: decrementa `outputIndex` se > 0; se `outputIndex === 0`, volta para ultima frase do shadowing.
+
+## Detalhes tecnicos
+
+### Arquivo: `src/components/ChallengeFlow.tsx`
+
+**Novo estado:**
 ```text
-[Mensagem do usuario com erro] [icone retry]
-[Resposta da IA baseada no erro]
-
-Usuario clica no retry →
-  - Ambas mensagens somem
-  - Microfone ativa automaticamente
-  - Usuario fala novamente
-  - Nova resposta da IA e gerada
+const [transcriptionFailed, setTranscriptionFailed] = useState(false);
 ```
 
-O botao aparece apenas na ultima mensagem do usuario (nao faz sentido refazer mensagens anteriores, pois a IA ja respondeu com base nelas e a conversa seguiu).
+**Correcao do audio (playAudioUrl e stopAudio):**
+```text
+// Em playAudioUrl - onended:
+audio.onended = () => {
+  setIsPlaying(false);
+  audio.src = '';
+  audioRef.current = null;
+  // marcar inputListened se step === 'input'
+};
 
-## Mudancas tecnicas
+// Em stopAudio:
+if (audioRef.current) {
+  audioRef.current.pause();
+  audioRef.current.src = '';
+  audioRef.current = null;
+}
+```
 
-### Arquivo: `src/components/FreeTalkFlow.tsx`
+**Guard no handleRecordToggle (bloco else, ao iniciar gravacao):**
+```text
+// Antes de startListening, parar qualquer audio tocando
+if (isPlaying) stopAudio();
+```
 
-1. **Import adicional**: `RotateCcw` do lucide-react
+**handleRecordToggle - bloco text vazio (linha 397-398):**
+```text
+ANTES: setAudioConfirmed(true);
+DEPOIS: setTranscriptionFailed(true);
+```
 
-2. **Nova funcao `handleRetry`**:
-   - Identifica a ultima mensagem do usuario e a resposta da IA logo apos ela
-   - Remove ambas do array `messages`
-   - Inicia o microfone automaticamente (`startListening()`)
-   - Seta `micStatus = 'listening'` e `recordingStartRef`
+**Limpar transcriptionFailed:**
+```text
+- Ao iniciar nova gravacao (junto com setAudioConfirmed(false))
+- No useEffect de [step, shadowingIndex, outputIndex] (linha 360)
+```
 
-3. **Botao retry na UI**: Ao lado do indicador "Enviado" na ultima mensagem do usuario, adicionar um botao com icone `RotateCcw`. Visivel apenas quando:
-   - E a ultima mensagem do usuario no array
-   - Nao esta gravando (`!isListening`)
-   - Nao esta carregando (`!isLoading`)
+**Nova funcao handlePreviousStep:**
+```text
+const handlePreviousStep = () => {
+  if (step === 'shadowing' && shadowingIndex > 0) {
+    setShadowingIndex(prev => prev - 1);
+  } else if (step === 'output') {
+    if (outputIndex > 0) {
+      setOutputIndex(prev => prev - 1);
+    } else {
+      // Volta para ultima frase do shadowing
+      setStep('shadowing');
+      setShadowingIndex(shadowingSentences.length - 1);
+    }
+  }
+};
+```
 
-4. **Logica de identificacao**: Comparar o `message.id` com o id da ultima mensagem de role "user" no array para decidir se mostra o botao
+**UI - Card de falha (shadowing e output):**
+```text
+Condicao: transcriptionFailed && !audioConfirmed && !isRecording
+Icone: AlertCircle amarelo
+Texto: "Nao foi possivel capturar sua fala. Tente novamente."
+```
 
-### Nenhuma mudanca em outros arquivos
+**UI - Botao avancar condicional:**
+```text
+Se etapa atual nao completada:
+  variant="outline", texto="Pular" (shadowing) ou "Pular pergunta" (output)
+Se completada:
+  variant="hero", texto normal
+```
 
-A logica e inteiramente local ao componente FreeTalkFlow.
+**UI - Botao voltar:**
+```text
+Visivel se shadowingIndex > 0 (shadowing) ou sempre no output
+Icone ChevronLeft, variant="outline"
+Posicionado em row com o botao de avancar
+```
+
+## Arquivos modificados
+
+| Arquivo | Mudanca |
+|---------|---------|
+| `src/components/ChallengeFlow.tsx` | Liberar audio session apos playback, guard no mic, estado transcriptionFailed, botao voltar, botao pular |
 
