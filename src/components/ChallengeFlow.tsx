@@ -17,6 +17,7 @@ import {
   Square,
   Check,
   ChevronRight,
+  ChevronLeft,
   Volume2,
   Loader2,
   AlertCircle,
@@ -114,6 +115,7 @@ export function ChallengeFlow({ onBack, onComplete, isFixation = false, resumeSe
   const [showAnalysisAnimation, setShowAnalysisAnimation] = useState(false);
   const [speakingDuration, setSpeakingDuration] = useState(resumeSession?.speaking_seconds || 0);
   const [audioConfirmed, setAudioConfirmed] = useState(false);
+  const [transcriptionFailed, setTranscriptionFailed] = useState(false);
   const [outputFeedback, setOutputFeedback] = useState<OutputFeedback | null>(null);
   const [isGettingOutputFeedback, setIsGettingOutputFeedback] = useState(false);
   const recordingStartRef = useRef<number>(0);
@@ -314,6 +316,8 @@ export function ChallengeFlow({ onBack, onComplete, isFixation = false, resumeSe
     audio.onplay = () => setIsPlaying(true);
     audio.onended = () => {
       setIsPlaying(false);
+      audio.src = '';
+      audioRef.current = null;
       if (step === 'input') {
         setStepsCompleted(prev => ({ ...prev, inputListened: true }));
       }
@@ -334,7 +338,8 @@ export function ChallengeFlow({ onBack, onComplete, isFixation = false, resumeSe
   const stopAudio = () => {
     if (audioRef.current) {
       audioRef.current.pause();
-      audioRef.current.currentTime = 0;
+      audioRef.current.src = '';
+      audioRef.current = null;
     }
     setIsPlaying(false);
     setIsLoading(false);
@@ -361,6 +366,7 @@ export function ChallengeFlow({ onBack, onComplete, isFixation = false, resumeSe
     stopAudio();
     setShadowingFeedback(null);
     setAudioConfirmed(false);
+    setTranscriptionFailed(false);
     setOutputFeedback(null);
   }, [step, shadowingIndex, outputIndex]);
 
@@ -395,16 +401,19 @@ export function ChallengeFlow({ onBack, onComplete, isFixation = false, resumeSe
           getOutputFeedback(text, questions[outputIndex]);
         }
       } else {
-        setAudioConfirmed(true);
+        setTranscriptionFailed(true);
       }
       resetTranscript();
     } else {
+      // Stop any playing audio before starting mic (iOS audio session fix)
+      if (isPlaying) stopAudio();
       recordingStartRef.current = Date.now();
       const started = await startListening();
       if (started) {
         setIsRecording(true);
         setShadowingFeedback(null);
         setAudioConfirmed(false);
+        setTranscriptionFailed(false);
         setOutputFeedback(null);
       }
     }
@@ -485,6 +494,20 @@ export function ChallengeFlow({ onBack, onComplete, isFixation = false, resumeSe
       });
     } finally {
       setIsEvaluating(false);
+    }
+  };
+
+  const handlePreviousStep = () => {
+    if (step === 'shadowing' && shadowingIndex > 0) {
+      setShadowingIndex(prev => prev - 1);
+    } else if (step === 'output') {
+      if (outputIndex > 0) {
+        setOutputIndex(prev => prev - 1);
+      } else {
+        // Back to last shadowing sentence
+        setStep('shadowing');
+        setShadowingIndex(shadowingSentences.length - 1);
+      }
     }
   };
 
@@ -619,6 +642,16 @@ export function ChallengeFlow({ onBack, onComplete, isFixation = false, resumeSe
               </p>
             </Card>
 
+            {/* Transcription failed */}
+            {transcriptionFailed && !audioConfirmed && !isRecording && !isListening && (
+              <Card variant="default" padding="sm" className="mb-4 border-yellow-500/30 bg-yellow-500/5">
+                <div className="flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 text-yellow-500" />
+                  <span className="text-sm font-medium text-yellow-600">Não foi possível capturar sua fala. Tente novamente.</span>
+                </div>
+              </Card>
+            )}
+
             {/* Audio confirmed */}
             {audioConfirmed && !shadowingFeedback && (
               <Card variant="default" padding="sm" className="mb-4 border-accent/30 bg-accent/5">
@@ -700,10 +733,25 @@ export function ChallengeFlow({ onBack, onComplete, isFixation = false, resumeSe
               )}
             </div>
 
-            <Button variant="hero" size="xl" className="mt-6" onClick={handleNextStep}>
-              {shadowingIndex < shadowingSentences.length - 1 ? "Próxima frase" : "Continuar para Output"}
-              <ChevronRight className="w-5 h-5" />
-            </Button>
+            <div className="flex gap-3 mt-6">
+              {shadowingIndex > 0 && (
+                <Button variant="outline" size="xl" onClick={handlePreviousStep}>
+                  <ChevronLeft className="w-5 h-5" />
+                </Button>
+              )}
+              <Button 
+                variant={stepsCompleted.shadowingRecorded[shadowingIndex] ? "hero" : "outline"} 
+                size="xl" 
+                className="flex-1" 
+                onClick={handleNextStep}
+              >
+                {stepsCompleted.shadowingRecorded[shadowingIndex]
+                  ? (shadowingIndex < shadowingSentences.length - 1 ? "Próxima frase" : "Continuar para Output")
+                  : "Pular"
+                }
+                <ChevronRight className="w-5 h-5" />
+              </Button>
+            </div>
           </div>
         )}
 
@@ -725,6 +773,16 @@ export function ChallengeFlow({ onBack, onComplete, isFixation = false, resumeSe
                 {questions[outputIndex]}
               </p>
             </Card>
+
+            {/* Transcription failed */}
+            {transcriptionFailed && !audioConfirmed && !isRecording && !isListening && (
+              <Card variant="default" padding="sm" className="mb-4 border-yellow-500/30 bg-yellow-500/5">
+                <div className="flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 text-yellow-500" />
+                  <span className="text-sm font-medium text-yellow-600">Não foi possível capturar sua fala. Tente novamente.</span>
+                </div>
+              </Card>
+            )}
 
             {/* Audio confirmed */}
             {audioConfirmed && !outputFeedback && !isGettingOutputFeedback && (
@@ -794,15 +852,23 @@ export function ChallengeFlow({ onBack, onComplete, isFixation = false, resumeSe
               </p>
             </div>
 
-            <Button 
-              variant="hero" 
-              size="xl" 
-              className="mt-6" 
-              onClick={handleNextStep}
-            >
-              {outputIndex < questions.length - 1 ? "Próxima pergunta" : "Ver feedback"}
-              <ChevronRight className="w-5 h-5" />
-            </Button>
+            <div className="flex gap-3 mt-6">
+              <Button variant="outline" size="xl" onClick={handlePreviousStep}>
+                <ChevronLeft className="w-5 h-5" />
+              </Button>
+              <Button 
+                variant={stepsCompleted.outputRecorded[outputIndex] ? "hero" : "outline"} 
+                size="xl" 
+                className="flex-1" 
+                onClick={handleNextStep}
+              >
+                {stepsCompleted.outputRecorded[outputIndex]
+                  ? (outputIndex < questions.length - 1 ? "Próxima pergunta" : "Ver feedback")
+                  : (outputIndex < questions.length - 1 ? "Pular pergunta" : "Ver feedback")
+                }
+                <ChevronRight className="w-5 h-5" />
+              </Button>
+            </div>
           </div>
         )}
 
