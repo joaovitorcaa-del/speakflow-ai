@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { WaveformVisualizer } from "@/components/WaveformVisualizer";
-import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
+import { useWhisperRecognition } from "@/hooks/useWhisperRecognition";
 import {
   ArrowLeft,
   Mic,
@@ -56,9 +56,8 @@ export function FreeTalkFlow({ onBack, onComplete }: FreeTalkFlowProps) {
     resetTranscript,
     permissionStatus,
     error: speechError
-  } = useSpeechRecognition({
-    language: 'en-US',
-    continuous: true,
+  } = useWhisperRecognition({
+    language: 'en',
     onError: (error) => {
       console.error("Speech recognition error:", error);
       setMicStatus('error');
@@ -91,7 +90,7 @@ export function FreeTalkFlow({ onBack, onComplete }: FreeTalkFlowProps) {
     setIsLoading(true);
     try {
       const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/elevenlabs-tts`,
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/openai-tts`,
         {
           method: "POST",
           headers: {
@@ -99,7 +98,7 @@ export function FreeTalkFlow({ onBack, onComplete }: FreeTalkFlowProps) {
             apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
             Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
           },
-          body: JSON.stringify({ text, voiceId: "EXAVITQu4vr4xnSDxMaL" }),
+          body: JSON.stringify({ text, voice: "alloy" }),
         }
       );
 

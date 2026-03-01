@@ -86,7 +86,7 @@ export function AssessmentFlow({ goal, onComplete, onBack }: AssessmentFlowProps
     setIsSpeaking(true);
     try {
       const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/elevenlabs-tts`,
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/openai-tts`,
         {
           method: "POST",
           headers: {
@@ -94,10 +94,7 @@ export function AssessmentFlow({ goal, onComplete, onBack }: AssessmentFlowProps
             apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
             Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
           },
-          body: JSON.stringify({ 
-            text, 
-            voiceId: "JBFqnCBsd6RMkjVDRZzb" // George - friendly male voice
-          }),
+          body: JSON.stringify({ text, voice: "alloy" }),
         }
       );
 
@@ -315,7 +312,7 @@ export function AssessmentFlow({ goal, onComplete, onBack }: AssessmentFlowProps
           setCurrentAiMessage(transitionText);
           
           const response = await fetch(
-            `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/elevenlabs-tts`,
+            `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/openai-tts`,
             {
               method: "POST",
               headers: {
@@ -325,7 +322,7 @@ export function AssessmentFlow({ goal, onComplete, onBack }: AssessmentFlowProps
               },
               body: JSON.stringify({ 
                 text: transitionText, 
-                voiceId: "JBFqnCBsd6RMkjVDRZzb"
+                voice: "alloy"
               }),
             }
           );
