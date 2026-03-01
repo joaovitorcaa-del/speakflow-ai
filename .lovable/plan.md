@@ -1,118 +1,84 @@
 
 
-# Correcoes no ChallengeFlow: mic apos audio, transcricao vazia e navegacao
+# Migração de ElevenLabs + Web Speech API para OpenAI (Whisper + TTS)
 
-## Problemas identificados
+## Visão geral
 
-### 1. Audio playback quebra o microfone no iOS
-Quando o usuario clica no botao de ouvir a frase (Volume2), o `HTMLAudioElement` toma controle da sessao de audio do dispositivo. No iOS Safari, apenas uma "audio session" pode estar ativa por vez. Quando o usuario tenta gravar depois, a Web Speech API inicia (o botao muda visualmente, o iPhone mostra o indicador de mic), mas o audio nao e roteado para o reconhecimento de fala -- resultado: nenhuma transcricao.
+Substituir completamente o ElevenLabs (TTS) e a Web Speech API (STT) pela API da OpenAI, usando:
+- **Whisper** para transcrição de áudio (STT)
+- **OpenAI TTS** (`tts-1` com voz `alloy` ou similar) para síntese de voz
 
-**Causa no codigo (linhas 304-331)**: `playAudioUrl` cria um `new Audio()` que fica referenciado em `audioRef.current`, mas apos o `onended`, o elemento nao e liberado. O `audio.pause()` na linha 306 pausa mas nao libera a sessao de audio.
+## Pré-requisito
 
-**Solucao**: No `onended` e no `stopAudio`, alem de pausar, setar `audioRef.current.src = ''` e `audioRef.current = null` para liberar a sessao de audio do iOS antes de qualquer tentativa de gravar. Tambem adicionar um guard em `handleRecordToggle`: se o audio estiver tocando, parar antes de iniciar a gravacao.
+Será necessário adicionar sua chave da API da OpenAI como secret do projeto (via ferramenta segura). Ela será usada nas edge functions.
 
-### 2. Feedback falso de "Audio recebido" sem transcricao
-Linha 397-398: quando `text` esta vazio, `setAudioConfirmed(true)` e chamado mesmo assim, mostrando o card verde "Audio recebido" sem ter capturado nada.
+## Mudanças
 
-**Solucao**: Novo estado `transcriptionFailed`. Quando `text` esta vazio, setar `transcriptionFailed = true` em vez de `audioConfirmed = true`. Na UI, mostrar card amarelo com "Nao foi possivel capturar sua fala. Tente novamente." O estado limpa ao iniciar nova gravacao ou mudar de step/index.
+### 1. Nova edge function: `openai-tts`
 
-### 3. Avanco sem registro permite prosseguir sem aviso
-O botao "Proxima frase" nao diferencia se a etapa foi completada ou nao.
+Substitui a `elevenlabs-tts`. Recebe `{ text, voice? }` e retorna áudio MP3 via API `https://api.openai.com/v1/audio/speech`.
 
-**Solucao**: Se a etapa atual nao foi completada (sem gravacao registrada), o botao muda para "Pular" com estilo `outline` em vez de `hero`. O avanco e permitido, mas nao marca a etapa como concluida.
+- Modelo: `tts-1` (rápido) ou `tts-1-hd` (qualidade)
+- Voz padrão: `alloy` (ou `nova`, `echo`, etc.)
+- Retorna `audio/mpeg` como já faz a atual
 
-### 4. Sem botao de voltar entre frases
-Nao ha como retornar a uma frase anterior no shadowing ou output.
+### 2. Nova edge function: `openai-stt`
 
-**Solucao**: Botao com icone `ChevronLeft` ao lado do botao de avancar. No shadowing: decrementa `shadowingIndex` se > 0. No output: decrementa `outputIndex` se > 0; se `outputIndex === 0`, volta para ultima frase do shadowing.
+Recebe áudio (FormData com arquivo) e retorna transcrição via Whisper (`https://api.openai.com/v1/audio/transcriptions`).
 
-## Detalhes tecnicos
+- Modelo: `whisper-1`
+- Idioma: `en`
+- Retorna `{ text: "transcription" }`
 
-### Arquivo: `src/components/ChallengeFlow.tsx`
+### 3. Novo hook: `useWhisperRecognition`
 
-**Novo estado:**
+Substitui `useSpeechRecognition`. Usa `MediaRecorder` para gravar áudio real do microfone e envia para a edge function `openai-stt`.
+
+Interface mantém compatibilidade:
+- `startListening()` → inicia `MediaRecorder`
+- `stopListening()` → para gravação, envia blob para edge function, retorna texto
+- `transcript`, `isListening`, `isSupported`, `error` — mesmos campos
+
+Diferença principal: o transcript parcial (interim) não existirá mais — Whisper só retorna resultado final após enviar o áudio completo. O campo `transcript` será atualizado apenas após o envio.
+
+### 4. Atualizar componentes consumidores
+
+Trocar imports e chamadas em 4 arquivos:
+
+| Arquivo | Mudança TTS | Mudança STT |
+|---------|------------|------------|
+| `ChallengeFlow.tsx` | `elevenlabs-tts` → `openai-tts` | `useSpeechRecognition` → `useWhisperRecognition` |
+| `FreeTalkFlow.tsx` | `elevenlabs-tts` → `openai-tts` | `useSpeechRecognition` → `useWhisperRecognition` |
+| `AssessmentFlow.tsx` | `elevenlabs-tts` → `openai-tts` | N/A (não usa STT) |
+| `VocabularyLearningModal.tsx` | `elevenlabs-tts` → `openai-tts` | N/A (não usa STT) |
+
+### 5. Atualizar `supabase/config.toml`
+
+Adicionar entradas para `openai-tts` e `openai-stt` com `verify_jwt = false`.
+
+## Impacto na UX
+
+- **TTS**: Qualidade diferente (vozes OpenAI vs ElevenLabs), mas funcional
+- **STT**: Precisão do Whisper é superior à Web Speech API, porém **sem transcript parcial em tempo real** — o texto só aparece após parar a gravação. O waveform visualizer continua funcionando (usa MediaStream)
+- **Custo**: Passa a consumir créditos da sua conta OpenAI em vez do ElevenLabs
+
+## Detalhes técnicos
+
 ```text
-const [transcriptionFailed, setTranscriptionFailed] = useState(false);
+Fluxo STT (novo):
+  User toca gravar
+    → MediaRecorder.start() captura áudio
+    → WaveformVisualizer usa o MediaStream (sem mudança visual)
+  User toca parar
+    → MediaRecorder.stop() gera Blob (webm/mp4)
+    → Blob enviado via FormData para edge function openai-stt
+    → Whisper retorna texto
+    → Componente recebe transcript final
+
+Fluxo TTS (novo):
+  Componente chama fetch('openai-tts', { text })
+    → Edge function chama OpenAI TTS API
+    → Retorna audio/mpeg
+    → Componente toca com HTMLAudioElement (sem mudança)
 ```
-
-**Correcao do audio (playAudioUrl e stopAudio):**
-```text
-// Em playAudioUrl - onended:
-audio.onended = () => {
-  setIsPlaying(false);
-  audio.src = '';
-  audioRef.current = null;
-  // marcar inputListened se step === 'input'
-};
-
-// Em stopAudio:
-if (audioRef.current) {
-  audioRef.current.pause();
-  audioRef.current.src = '';
-  audioRef.current = null;
-}
-```
-
-**Guard no handleRecordToggle (bloco else, ao iniciar gravacao):**
-```text
-// Antes de startListening, parar qualquer audio tocando
-if (isPlaying) stopAudio();
-```
-
-**handleRecordToggle - bloco text vazio (linha 397-398):**
-```text
-ANTES: setAudioConfirmed(true);
-DEPOIS: setTranscriptionFailed(true);
-```
-
-**Limpar transcriptionFailed:**
-```text
-- Ao iniciar nova gravacao (junto com setAudioConfirmed(false))
-- No useEffect de [step, shadowingIndex, outputIndex] (linha 360)
-```
-
-**Nova funcao handlePreviousStep:**
-```text
-const handlePreviousStep = () => {
-  if (step === 'shadowing' && shadowingIndex > 0) {
-    setShadowingIndex(prev => prev - 1);
-  } else if (step === 'output') {
-    if (outputIndex > 0) {
-      setOutputIndex(prev => prev - 1);
-    } else {
-      // Volta para ultima frase do shadowing
-      setStep('shadowing');
-      setShadowingIndex(shadowingSentences.length - 1);
-    }
-  }
-};
-```
-
-**UI - Card de falha (shadowing e output):**
-```text
-Condicao: transcriptionFailed && !audioConfirmed && !isRecording
-Icone: AlertCircle amarelo
-Texto: "Nao foi possivel capturar sua fala. Tente novamente."
-```
-
-**UI - Botao avancar condicional:**
-```text
-Se etapa atual nao completada:
-  variant="outline", texto="Pular" (shadowing) ou "Pular pergunta" (output)
-Se completada:
-  variant="hero", texto normal
-```
-
-**UI - Botao voltar:**
-```text
-Visivel se shadowingIndex > 0 (shadowing) ou sempre no output
-Icone ChevronLeft, variant="outline"
-Posicionado em row com o botao de avancar
-```
-
-## Arquivos modificados
-
-| Arquivo | Mudanca |
-|---------|---------|
-| `src/components/ChallengeFlow.tsx` | Liberar audio session apos playback, guard no mic, estado transcriptionFailed, botao voltar, botao pular |
 
