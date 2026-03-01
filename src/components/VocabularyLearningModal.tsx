@@ -50,7 +50,7 @@ export function VocabularyLearningModal({
     setIsPlayingAudio(true);
     try {
       const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/elevenlabs-tts`,
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/openai-tts`,
         {
           method: "POST",
           headers: {
@@ -58,10 +58,7 @@ export function VocabularyLearningModal({
             apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
             Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
           },
-          body: JSON.stringify({ 
-            text: currentWord.word, 
-            voiceId: "EXAVITQu4vr4xnSDxMaL" // Sarah voice
-          }),
+          body: JSON.stringify({ text: currentWord.word, voice: "alloy" }),
         }
       );
 

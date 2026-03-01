@@ -5,7 +5,7 @@ import { ProgressBar } from "@/components/ProgressBar";
 import { WaveformVisualizer } from "@/components/WaveformVisualizer";
 import { ConfettiEffect } from "@/components/ConfettiEffect";
 import { AnalysisAnimation } from "@/components/AnalysisAnimation";
-import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
+import { useWhisperRecognition } from "@/hooks/useWhisperRecognition";
 import { useProfile } from "@/hooks/useProfile";
 import { useAuth } from "@/hooks/useAuth";
 import { 
@@ -212,9 +212,8 @@ export function ChallengeFlow({ onBack, onComplete, isFixation = false, resumeSe
     stopListening,
     resetTranscript,
     error: speechError
-  } = useSpeechRecognition({
-    language: 'en-US',
-    continuous: true,
+  } = useWhisperRecognition({
+    language: 'en',
   });
 
   // Calculate completion percentage
@@ -268,7 +267,7 @@ export function ChallengeFlow({ onBack, onComplete, isFixation = false, resumeSe
     saveSession();
   }, [step, shadowingIndex, outputIndex]);
 
-  const playWithElevenLabs = async (text: string) => {
+  const playWithTTS = async (text: string) => {
     const cachedUrl = audioCache.current.get(text);
     if (cachedUrl) {
       playAudioUrl(cachedUrl);
@@ -278,7 +277,7 @@ export function ChallengeFlow({ onBack, onComplete, isFixation = false, resumeSe
     setIsLoading(true);
     try {
       const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/elevenlabs-tts`,
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/openai-tts`,
         {
           method: "POST",
           headers: {
@@ -286,7 +285,7 @@ export function ChallengeFlow({ onBack, onComplete, isFixation = false, resumeSe
             apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
             Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
           },
-          body: JSON.stringify({ text, voiceId: "EXAVITQu4vr4xnSDxMaL" }),
+          body: JSON.stringify({ text, voice: "alloy" }),
         }
       );
 
@@ -347,12 +346,12 @@ export function ChallengeFlow({ onBack, onComplete, isFixation = false, resumeSe
 
   const playInputAudio = () => {
     if (isPlaying) { stopAudio(); return; }
-    playWithElevenLabs(challengeContent?.inputText || '');
+    playWithTTS(challengeContent?.inputText || '');
   };
 
   const playShadowingSentence = () => {
     if (isPlaying) { stopAudio(); return; }
-    playWithElevenLabs(shadowingSentences[shadowingIndex]);
+    playWithTTS(shadowingSentences[shadowingIndex]);
   };
 
   useEffect(() => {
