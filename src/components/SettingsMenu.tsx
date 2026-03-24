@@ -32,9 +32,12 @@ import {
   MessageCircle,
   GraduationCap,
   Check,
+  Moon,
+  Sun,
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { useProfile } from "@/hooks/useProfile";
+import { useTheme } from "@/components/ThemeProvider";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
@@ -49,6 +52,7 @@ const goalOptions = [
 export function SettingsMenu() {
   const { user, signOut, deleteAccount } = useAuth();
   const { profile, updateProfile } = useProfile();
+  const { theme, setTheme } = useTheme();
   const [showProfile, setShowProfile] = useState(false);
   const [showPlan, setShowPlan] = useState(false);
   const [showDelete, setShowDelete] = useState(false);
@@ -125,6 +129,14 @@ export function SettingsMenu() {
               <Globe className="w-4 h-4 mr-2" />
               Site
             </a>
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem onClick={(e) => {
+            e.preventDefault();
+            setTheme(theme === 'dark' ? 'light' : 'dark');
+          }}>
+            {theme === 'dark' ? <Sun className="w-4 h-4 mr-2" /> : <Moon className="w-4 h-4 mr-2" />}
+            {theme === 'dark' ? 'Modo Claro' : 'Modo Escuro'}
           </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem
