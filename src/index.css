@@ -24,8 +24,8 @@
     --accent: 160 60% 45%;
     --accent-foreground: 0 0% 100%;
     
-    /* Warm Cream Background */
-    --background: 40 30% 98%;
+    /* Soft Blue Background */
+    --background: 220 80% 96%;
     --foreground: 220 30% 15%;
     
     /* Cards */
@@ -87,7 +87,7 @@
   }
 
   .dark {
-    --background: 220 30% 8%;
+    --background: 220 50% 12%;
     --foreground: 40 20% 95%;
     
     --card: 220 25% 12%;
